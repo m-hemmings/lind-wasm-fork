@@ -42,8 +42,6 @@ make wasmtime sysroot
 ```
 Run `scripts/wasmtestreport.py --help` to list available usage options.
 
-
-
 ## What test suite does
 
 1. **Test Case Collection:** Scans `unit-tests` folder for `.c` files.
@@ -115,4 +113,3 @@ This will:
 - Use a 10-second timeout
 - Save output as `results_json.json`
 - Generate a report `test_report.html`
-

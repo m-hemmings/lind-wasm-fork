@@ -3,6 +3,9 @@
 use anyhow::Result;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+// `UNUSED_ID` / `UNUSED_ARG` / `UNUSED_NAME` is a placeholder argument
+// for functions that require a fixed number of parameters but do not utilize
+// all of them.
 use sysdefs::constants::lind_platform_const::{UNUSED_ARG, UNUSED_ID};
 use threei::threei::{
     copy_data_between_cages, copy_handler_table_to_cage, make_syscall, register_handler,
@@ -11,17 +14,6 @@ use threei::threei_const;
 use typemap::path_conversion::get_cstr;
 use wasmtime::Caller;
 use wasmtime_lind_multi_process::{clone_constants::CloneArgStruct, get_memory_base, LindHost};
-// These syscalls (`clone`, `exec`, `exit`, `fork`) require special handling
-// inside Lind Wasmtime before delegating to RawPOSIX. For example, they may
-// involve operations like setting up stack memory that must be performed
-// at the Wasmtime layer. Therefore, in the unified syscall entry point of
-// Wasmtime, these calls are routed to their dedicated logic, while other
-// syscalls are passed directly to 3i’s `make_syscall`.
-//
-// `UNUSED_ID` / `UNUSED_ARG` / `UNUSED_NAME` is a placeholder argument
-// for functions that require a fixed number of parameters but do not utilize
-// all of them.
-use wasmtime_lind_utils::lind_syscall_numbers::{CLONE_SYSCALL, EXEC_SYSCALL, EXIT_SYSCALL};
 
 // function to expose the handler to wasm module
 // linker: wasmtime's linker to link the imported function to the actual function definition

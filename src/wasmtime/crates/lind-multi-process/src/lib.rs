@@ -10,7 +10,6 @@ use threei::{threei::make_syscall, threei_const};
 use wasmtime_lind_3i::{
     get_vmctx, get_vmctx_thread, rm_vmctx, set_vmctx, set_vmctx_thread, VmCtxWrapper,
 };
-use wasmtime_lind_utils::lind_syscall_numbers::{EXEC_SYSCALL, EXIT_SYSCALL, FORK_SYSCALL};
 use wasmtime_lind_utils::{parse_env_var, LindCageManager};
 
 use std::ffi::CStr;

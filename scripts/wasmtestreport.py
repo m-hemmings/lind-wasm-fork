@@ -788,7 +788,7 @@ def create_required_executables(executable_deps, allow_precompiled=False):
     for exec_path, source_file in executable_deps.items():
         try:
             # Compile the source file to WASM or precompiled .cwasm depending on flag
-            wasm_file, compile_err = compile_c_to_wasm(source_file, allow_precompiled=allow_precompiled)
+            wasm_file, compile_err, _ = compile_c_to_wasm(source_file, allow_precompiled=allow_precompiled)
             
             if wasm_file is None:
                 logger.error(f"Failed to compile {source_file}: {compile_err}")

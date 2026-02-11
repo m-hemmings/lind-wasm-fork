@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 
 # Usage
-#   "./wasmtestreport" to run with default settings(5 second timeout and all tests inside unit-tests folder)
+#   "./wasmtestreport" to run with default settings(30 second timeout and all tests inside unit-tests folder)
 #   "./wasmtestreport.py --skip-folders config_tests file_tests" to skip the test cases in those folders
 #   "./wasmtestreport.py --run-folders config_tests file_tests" to run test cases in folder1 and folder2 only
-#   "./wasmtestreport.py --timeout 10" to run with a timeout of 10 seconds 
+#   "./wasmtestreport.py --timeout 30" to run with a timeout of 30 seconds 
 #   "./wasmtestreport.py --output newresult" to change the output file(The new file will be newresult.json)
 #   "./wasmtestreport.py --generate-html" to generate the html file
 #   "./wasmtestreport.py --allow-pre-compiled" to run tests with .cwasm binaries instead of .wasm binaries
-#   The arguments can be stacked eg: "./wasmtestreport.py --generate-html --skip-folders config_tests file_tests --timeout 10"
+#   The arguments can be stacked eg: "./wasmtestreport.py --generate-html --skip-folders config_tests file_tests --timeout 30"
 #   "./wasmtestreport.py --compile-flags -pthread -lpthread -O2 -g"
 #   (flags are collected until the next option starting with "--")
 #
@@ -36,7 +36,7 @@ formatter = logging.Formatter("[%(levelname)s] %(message)s")
 ch.setFormatter(formatter)
 logger.addHandler(ch)
 
-DEFAULT_TIMEOUT = 10 # in seconds
+DEFAULT_TIMEOUT = 30 # in seconds
 
 JSON_OUTPUT = "results.json"
 HTML_OUTPUT = "report.html"

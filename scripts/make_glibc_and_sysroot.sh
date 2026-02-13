@@ -184,42 +184,16 @@ filtered_objects=$(
 )
 llvm-ar rcs "$SYSROOT_ARCHIVE" $filtered_objects
 
-# Build a real libm archive from compiled glibc math objects.
-# Some math objects reference fenv entry points; provide minimal compatibility
-# implementations so wasm links with -lm resolve cleanly.
+# Build libm archive strictly from compiled glibc math objects.
+# No shim/fallback: if math objects are missing, fail loudly.
 libm_objects=$(find "$BUILD/math" -type f -name '*.o' 2>/dev/null | sort)
 
-if [ -n "$libm_objects" ]; then
-  llvm-ar crs "$SYSROOT/lib/wasm32-wasi/libm.a" $libm_objects
-else
-  echo "WARNING: no math object files found under $BUILD/math; creating fallback libm shim" >&2
-  cat > "$BUILD/libm_shim.c" <<'EOF'
-double sqrt(double x) { return __builtin_sqrt(x); }
-double cos(double x)  { return __builtin_cos(x); }
-double sin(double x)  { return __builtin_sin(x); }
-double tan(double x)  { return __builtin_tan(x); }
-double exp(double x)  { return __builtin_exp(x); }
-double log(double x)  { return __builtin_log(x); }
-EOF
-  $CC --target=wasm32-unknown-wasi -O2 -c "$BUILD/libm_shim.c" -o "$BUILD/libm_shim.o"
-  llvm-ar crs "$SYSROOT/lib/wasm32-wasi/libm.a" "$BUILD/libm_shim.o"
+if [ -z "$libm_objects" ]; then
+  echo "ERROR: no math object files found under $BUILD/math; cannot create libm.a" >&2
+  exit 1
 fi
 
-cat > "$BUILD/libm_fenv_compat.c" <<'EOF'
-typedef struct { unsigned int __cw; } fenv_t;
-typedef unsigned int fexcept_t;
-int fegetenv(fenv_t *envp) { if (envp) envp->__cw = 0; return 0; }
-int fesetenv(const fenv_t *envp) { (void)envp; return 0; }
-int feholdexcept(fenv_t *envp) { if (envp) envp->__cw = 0; return 0; }
-int feupdateenv(const fenv_t *envp) { (void)envp; return 0; }
-int feclearexcept(int excepts) { (void)excepts; return 0; }
-int feraiseexcept(int excepts) { (void)excepts; return 0; }
-int fetestexcept(int excepts) { (void)excepts; return 0; }
-int fegetround(void) { return 0; }
-int fesetround(int mode) { (void)mode; return 0; }
-EOF
-$CC --target=wasm32-unknown-wasi -O2 -c "$BUILD/libm_fenv_compat.c" -o "$BUILD/libm_fenv_compat.o"
-llvm-ar r "$SYSROOT/lib/wasm32-wasi/libm.a" "$BUILD/libm_fenv_compat.o"
+llvm-ar crs "$SYSROOT/lib/wasm32-wasi/libm.a" $libm_objects
 
 llvm-ar crs "$GLIBC/sysroot/lib/wasm32-wasi/libpthread.a"
 

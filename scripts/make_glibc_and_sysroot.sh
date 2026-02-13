@@ -184,16 +184,14 @@ filtered_objects=$(
 )
 llvm-ar rcs "$SYSROOT_ARCHIVE" $filtered_objects
 
-# Build libm archive strictly from compiled glibc math objects.
-# No shim/fallback: if math objects are missing, fail loudly.
-libm_objects=$(find "$BUILD/math" -type f -name '*.o' 2>/dev/null | sort)
-
-if [ -z "$libm_objects" ]; then
-  echo "ERROR: no math object files found under $BUILD/math; cannot create libm.a" >&2
+# Include the glibc-produced libm.a directly into the wasm sysroot.
+# No fallback/shim path: if libm.a is missing, fail loudly.
+GLIBC_LIBM_ARCHIVE="$GLIBC/target/lib/libm.a"
+if [ ! -f "$GLIBC_LIBM_ARCHIVE" ]; then
+  echo "ERROR: expected glibc libm archive not found: $GLIBC_LIBM_ARCHIVE" >&2
   exit 1
 fi
-
-llvm-ar crs "$SYSROOT/lib/wasm32-wasi/libm.a" $libm_objects
+cp "$GLIBC_LIBM_ARCHIVE" "$SYSROOT/lib/wasm32-wasi/libm.a"
 
 llvm-ar crs "$GLIBC/sysroot/lib/wasm32-wasi/libpthread.a"
 

@@ -145,7 +145,7 @@ def resolve_compile_flags(source_file: Path, kind: str):
             break
 
     extra_flags = []
-    if kind == "native" and MATH_TEST_DIR and rel_path.parts and rel_path.parts[0] == MATH_TEST_DIR:
+    if MATH_TEST_DIR and rel_path.parts and rel_path.parts[0] == MATH_TEST_DIR:
         extra_flags.append("-lm")
 
     return [*base_flags, *selected_flags, *extra_flags]

@@ -204,10 +204,9 @@ else
   exit 1
 fi
 
-# Copy all files from the external include directory to the new sysroot include directory.
-# Keep headers both at include/wasm32-wasi (project layout) and include/ (clang sysroot convention).
+# Copy all files from the external include directory to the sysroot include directory.
+# Keep headers under include/wasm32-wasi to match the lind toolchain layout.
 cp -r "$GLIBC/target/include/"* "$SYSROOT/include/wasm32-wasi/"
-cp -r "$GLIBC/target/include/"* "$SYSROOT/include/"
 
 # Copy the crt1.o file into the new sysroot lib directory
 cp "$GLIBC/lind_syscall/crt1.o" "$SYSROOT/lib/wasm32-wasi/"

@@ -9,7 +9,7 @@
 #
 set -x
 
-CC="clang"
+CC="${CC:-clang}"
 GLIBC="$PWD/src/glibc"
 BUILD="$GLIBC/build"
 SYSROOT="$GLIBC/sysroot"
@@ -61,7 +61,7 @@ INCLUDE_PATHS="
 "
 
 
-RESOURCE_DIR="$(clang --target=wasm32-unknown-wasi -print-resource-dir)"
+RESOURCE_DIR="$($CC --target=wasm32-unknown-wasi -print-resource-dir)"
 SYS_INCLUDE="-nostdinc -isystem ${RESOURCE_DIR}/include -isystem /usr/i686-linux-gnu/include"
 
 #SYS_INCLUDE="-nostdinc -isystem $CLANG/lib/clang/18/include -isystem /usr/i686-linux-gnu/include"
@@ -88,7 +88,7 @@ cd $BUILD
   --host=i686-linux-gnu \
   --build=i686-linux-gnu \
   CFLAGS=" -matomics -mbulk-memory -O2 -g" \
-  CC="clang --target=wasm32-unknown-wasi -v -Wno-int-conversion"
+  CC="$CC --target=wasm32-unknown-wasi -v -Wno-int-conversion"
 
 make -j$(($(nproc) * 2)) --keep-going 2>&1 THREAD_MODEL=posix | tee check.log
 
@@ -183,6 +183,11 @@ filtered_objects=$(
   done
 )
 llvm-ar rcs "$SYSROOT_ARCHIVE" $filtered_objects
+
+# Provide a libm archive so `-lm` works in wasm links.
+# Many math symbols may already resolve from libc in this toolchain, but
+# linkers still require the requested archive to exist when -lm is passed.
+cp "$SYSROOT_ARCHIVE" "$SYSROOT/lib/wasm32-wasi/libm.a"
 
 llvm-ar crs "$GLIBC/sysroot/lib/wasm32-wasi/libpthread.a"
 

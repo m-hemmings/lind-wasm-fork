@@ -184,10 +184,19 @@ filtered_objects=$(
 )
 llvm-ar rcs "$SYSROOT_ARCHIVE" $filtered_objects
 
-# Provide a libm archive so `-lm` works in wasm links.
-# Many math symbols may already resolve from libc in this toolchain, but
-# linkers still require the requested archive to exist when -lm is passed.
-cp "$SYSROOT_ARCHIVE" "$SYSROOT/lib/wasm32-wasi/libm.a"
+# Provide a minimal libm archive so `-lm` works in wasm links.
+# We intentionally avoid repacking libc into libm because that can pull math
+# objects with unresolved fenv dependencies in some partial glibc builds.
+cat > "$BUILD/libm_shim.c" <<'EOF'
+double sqrt(double x) { return __builtin_sqrt(x); }
+double cos(double x)  { return __builtin_cos(x); }
+double sin(double x)  { return __builtin_sin(x); }
+double tan(double x)  { return __builtin_tan(x); }
+double exp(double x)  { return __builtin_exp(x); }
+double log(double x)  { return __builtin_log(x); }
+EOF
+$CC --target=wasm32-unknown-wasi -O2 -c "$BUILD/libm_shim.c" -o "$BUILD/libm_shim.o"
+llvm-ar crs "$SYSROOT/lib/wasm32-wasi/libm.a" "$BUILD/libm_shim.o"
 
 llvm-ar crs "$GLIBC/sysroot/lib/wasm32-wasi/libpthread.a"
 

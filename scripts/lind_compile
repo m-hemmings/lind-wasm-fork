@@ -228,15 +228,25 @@ if [[ ! -x "${LINDBOOT_BIN}" ]]; then
   echo "ERROR: lind-boot missing: ${LINDBOOT_BIN}" >&2
   exit 127 # Note: This is the traditional "command not found" exit code, can be changed as needed
 fi
-SYSROOT="${SYSROOT:-${REPO_ROOT}/build/sysroot}"
-if [[ ! -d "${SYSROOT}" ]]; then
-  SYSROOT="${REPO_ROOT}/src/glibc/sysroot"
+DEFAULT_BUILD_SYSROOT="${REPO_ROOT}/build/sysroot"
+DEFAULT_SRC_SYSROOT="${REPO_ROOT}/src/glibc/sysroot"
+
+if [[ -n "${SYSROOT:-}" ]]; then
+  SYSROOT="${SYSROOT}"
+else
+  # Prefer build/sysroot when it is complete; otherwise fall back to src/glibc/sysroot.
+  if [[ -f "${DEFAULT_BUILD_SYSROOT}/include/wasm32-wasi/math.h" && -f "${DEFAULT_BUILD_SYSROOT}/lib/wasm32-wasi/libc.a" ]]; then
+    SYSROOT="${DEFAULT_BUILD_SYSROOT}"
+  else
+    SYSROOT="${DEFAULT_SRC_SYSROOT}"
+  fi
 fi
 
 # Only check tools needed for the selected mode, to be more flexible
 if [[ "${MODE}" == "full" || "${MODE}" == "compile-only" ]]; then
   command -v "${CLANG_BIN}" >/dev/null 2>&1 || { echo "error: clang not found on PATH" >&2; exit 2; }
   [[ -d "${SYSROOT}" ]] || { echo "error: sysroot missing at ${SYSROOT}" >&2; exit 2; }
+  [[ -f "${SYSROOT}/include/wasm32-wasi/math.h" ]] || { echo "error: math.h missing in sysroot at ${SYSROOT}/include/wasm32-wasi/math.h" >&2; exit 2; }
 fi
 
 if [[ "${MODE}" == "full" || "${MODE}" == "opt-only" ]]; then

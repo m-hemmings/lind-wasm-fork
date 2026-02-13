@@ -9,7 +9,7 @@
 #
 set -x
 
-CC="clang"
+CC="${CC:-clang}"
 GLIBC="$PWD/src/glibc"
 BUILD="$GLIBC/build"
 SYSROOT="$GLIBC/sysroot"
@@ -61,7 +61,7 @@ INCLUDE_PATHS="
 "
 
 
-RESOURCE_DIR="$(clang --target=wasm32-unknown-wasi -print-resource-dir)"
+RESOURCE_DIR="$($CC --target=wasm32-unknown-wasi -print-resource-dir)"
 SYS_INCLUDE="-nostdinc -isystem ${RESOURCE_DIR}/include -isystem /usr/i686-linux-gnu/include"
 
 #SYS_INCLUDE="-nostdinc -isystem $CLANG/lib/clang/18/include -isystem /usr/i686-linux-gnu/include"
@@ -88,7 +88,7 @@ cd $BUILD
   --host=i686-linux-gnu \
   --build=i686-linux-gnu \
   CFLAGS=" -matomics -mbulk-memory -O2 -g" \
-  CC="clang --target=wasm32-unknown-wasi -v -Wno-int-conversion"
+  CC="$CC --target=wasm32-unknown-wasi -v -Wno-int-conversion"
 
 make -j$(($(nproc) * 2)) --keep-going 2>&1 THREAD_MODEL=posix | tee check.log
 
@@ -184,6 +184,15 @@ filtered_objects=$(
 )
 llvm-ar rcs "$SYSROOT_ARCHIVE" $filtered_objects
 
+# Include the glibc-produced libm.a directly into the wasm sysroot.
+# No fallback/shim path: if libm.a is missing, fail loudly.
+GLIBC_LIBM_ARCHIVE="$GLIBC/target/lib/libm.a"
+if [ ! -f "$GLIBC_LIBM_ARCHIVE" ]; then
+  echo "ERROR: expected glibc libm archive not found: $GLIBC_LIBM_ARCHIVE" >&2
+  exit 1
+fi
+cp "$GLIBC_LIBM_ARCHIVE" "$SYSROOT/lib/wasm32-wasi/libm.a"
+
 llvm-ar crs "$GLIBC/sysroot/lib/wasm32-wasi/libpthread.a"
 
 # Check if llvm-ar succeeded
@@ -195,7 +204,8 @@ else
   exit 1
 fi
 
-# Copy all files from the external include directory to the new sysroot include directory
+# Copy all files from the external include directory to the sysroot include directory.
+# Keep headers under include/wasm32-wasi to match the lind toolchain layout.
 cp -r "$GLIBC/target/include/"* "$SYSROOT/include/wasm32-wasi/"
 
 # Copy the crt1.o file into the new sysroot lib directory

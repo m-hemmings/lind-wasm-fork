@@ -522,14 +522,14 @@ def run_compiled_wasm(wasm_file, timeout_sec=DEFAULT_TIMEOUT):
         run_start = time.perf_counter()
         proc = run_subprocess(run_cmd,label="wasm run",timeout=timeout_sec, cwd=None, shell = False)
         run_time = round(time.perf_counter() - run_start, 6)
-        full_output = proc.stdout + proc.stderr
-        
-        #removing the first line in output as it is the command being run by the bash script
-        lines = full_output.splitlines()
-        filtered_lines = lines[1:]
-        filtered_output = "\n".join(filtered_lines)
+        # For successful runs, compare against program stdout only so host-side
+        # debug messages on stderr (e.g. lind_debug logs) do not create false
+        # deterministic output mismatches.
+        #
+        # For non-zero exits, include stderr for troubleshooting context.
+        output = proc.stdout if proc.returncode == 0 else (proc.stdout + proc.stderr)
 
-        return (proc.returncode, full_output, run_time)
+        return (proc.returncode, output, run_time)
 
     except subprocess.TimeoutExpired as e:
         return ("timeout", f"Timed Out (timeout: {timeout_sec}s)", None)

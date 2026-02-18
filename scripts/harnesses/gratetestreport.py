@@ -122,6 +122,20 @@ class GrateTestCase:
         return self.cage_source.with_suffix(".wasm")
 
 
+def resolve_wasm_output(source_file: Path, cwd: Path) -> Path:
+    """Resolve expected wasm output location across differing lind-clang behaviors."""
+    candidate_in_source_dir = source_file.with_suffix(".wasm")
+    candidate_in_cwd = cwd / source_file.with_suffix(".wasm").name
+
+    if candidate_in_source_dir.exists():
+        return candidate_in_source_dir
+    if candidate_in_cwd.exists():
+        return candidate_in_cwd
+
+    # Default to source-dir expectation for clearer error messages.
+    return candidate_in_source_dir
+
+
 def in_selected_folders(path: Path, run_folders: list[str], skip_folders: list[str]) -> bool:
     rel = path.resolve().relative_to(GRATE_TEST_BASE.resolve())
     rel_parts = rel.parts[:-1]
@@ -163,11 +177,11 @@ def run_subprocess(cmd: list[str], timeout: int | None = None, cwd: Path | None 
 
 
 def compile_grate_test(test: GrateTestCase) -> tuple[bool, str]:
-    grate_compile_cmd = [GRATE_CLANG, "--compile-grate", str(test.grate_source)]
-    cage_compile_cmd = [GRATE_CLANG, str(test.cage_source)]
+    grate_compile_cmd = [GRATE_CLANG, "--compile-grate", test.grate_source.name]
+    cage_compile_cmd = [GRATE_CLANG, test.cage_source.name]
 
     try:
-        grate_proc = run_subprocess(grate_compile_cmd, cwd=REPO_ROOT)
+        grate_proc = run_subprocess(grate_compile_cmd, cwd=test.grate_source.parent)
     except Exception as exc:
         return False, f"Exception compiling grate source: {exc}"
 
@@ -178,7 +192,7 @@ def compile_grate_test(test: GrateTestCase) -> tuple[bool, str]:
         )
 
     try:
-        cage_proc = run_subprocess(cage_compile_cmd, cwd=REPO_ROOT)
+        cage_proc = run_subprocess(cage_compile_cmd, cwd=test.cage_source.parent)
     except Exception as exc:
         return False, f"Exception compiling cage source: {exc}"
 
@@ -188,18 +202,23 @@ def compile_grate_test(test: GrateTestCase) -> tuple[bool, str]:
             f"STDOUT:\n{cage_proc.stdout}\nSTDERR:\n{cage_proc.stderr}"
         )
 
-    if not test.grate_wasm.exists() or not test.cage_wasm.exists():
+    grate_wasm = resolve_wasm_output(test.grate_source, test.grate_source.parent)
+    cage_wasm = resolve_wasm_output(test.cage_source, test.cage_source.parent)
+
+    if not grate_wasm.exists() or not cage_wasm.exists():
         return False, (
             "Compilation completed but expected wasm outputs were not found.\n"
-            f"grate_wasm={test.grate_wasm} exists={test.grate_wasm.exists()}\n"
-            f"cage_wasm={test.cage_wasm} exists={test.cage_wasm.exists()}"
+            f"grate_wasm={grate_wasm} exists={grate_wasm.exists()}\n"
+            f"cage_wasm={cage_wasm} exists={cage_wasm.exists()}"
         )
 
     return True, ""
 
 
 def run_grate_test(test: GrateTestCase, timeout_sec: int) -> tuple[str, str, int | str]:
-    run_cmd = [GRATE_RUNNER, str(test.grate_wasm), str(test.cage_wasm)]
+    grate_wasm = resolve_wasm_output(test.grate_source, test.grate_source.parent)
+    cage_wasm = resolve_wasm_output(test.cage_source, test.cage_source.parent)
+    run_cmd = [GRATE_RUNNER, str(grate_wasm), str(cage_wasm)]
     try:
         proc = run_subprocess(run_cmd, timeout=timeout_sec, cwd=REPO_ROOT)
     except subprocess.TimeoutExpired:

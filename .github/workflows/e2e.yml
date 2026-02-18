@@ -22,6 +22,8 @@ jobs:
     env:
       REPORT_LOCAL_DIR: test-reports
       REPORT_LOCAL_FILE: wasm-e2e-report.html
+      REPORT_JSON_FILE: wasm.json
+      REPORT_HTML_IN_REPORTS: report.html
       COMMENT_LOCAL_FILE: e2e_comment.md
 
     steps:
@@ -100,6 +102,22 @@ jobs:
         with:
           name: wasm-e2e-report
           path: ${{ env.REPORT_LOCAL_DIR }}/${{ env.REPORT_LOCAL_FILE }}
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload unified runner JSON report artifact
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: wasm-e2e-json
+          path: ${{ env.REPORT_LOCAL_DIR }}/reports/${{ env.REPORT_JSON_FILE }}
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload unified runner HTML report artifact
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: wasm-e2e-unified-html
+          path: ${{ env.REPORT_LOCAL_DIR }}/reports/${{ env.REPORT_HTML_IN_REPORTS }}
           if-no-files-found: error
           retention-days: 7
       

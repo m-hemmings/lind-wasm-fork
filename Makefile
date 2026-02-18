@@ -57,9 +57,8 @@ sync-sysroot:
 test: prepare-lind-root
 	# Unified harness entry point (wasm harness only for e2e signal)
 	LIND_WASM_BASE=. LINDFS_ROOT=$(LINDFS_ROOT) \
-	python3 ./scripts/test_runner.py --harness wasmtestreport && \
+	python3 ./scripts/test_runner.py --harness wasmtestreport --export-report report.html && \
 	cat reports/wasm.json; \
-	cp reports/report.html report.html; \
 	if grep -q '"number_of_failures": [^0]' reports/wasm.json; then \
 	  echo "E2E_STATUS=fail" > e2e_status; \
 	else \

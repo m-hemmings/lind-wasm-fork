@@ -323,10 +323,10 @@ impl Instance {
                 // This is a direct underlying RawPOSIX call, so the `name` field will not be used.
                 // We pass `0` here as a placeholder to avoid any unnecessary performance overhead.
                 make_syscall(
-                    cageid,                               // self cageid
-                    (MMAP_SYSCALL) as u64,                // syscall num
+                    cageid,                // self cageid
+                    (MMAP_SYSCALL) as u64, // syscall num
                     0, // since wasmtime operates with lower level memory, it always interacts with underlying os
-                    lind_platform_const::RAWPOSIX_CAGEID, // target cageid (should be same)
+                    cageid, // target cageid (should be same)
                     0, // the first memory region starts from 0
                     cageid,
                     minimal_pages << PAGESHIFT, // size of first memory region

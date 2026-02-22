@@ -36,7 +36,7 @@
             (syscall_num), \
             (syscall_name), \
             __self, /* self_cageid */ \
-            777777, /* target_cageid: set to RAWPOSIX_CAGEID by default */ \
+            __self, /* target_cageid: set to same as self_cageid */ \
             (uint64_t)(arg1), __self, \
             (uint64_t)(arg2), __self, \
             (uint64_t)(arg3), __self, \

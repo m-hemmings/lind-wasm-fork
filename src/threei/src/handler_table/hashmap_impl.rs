@@ -58,7 +58,7 @@ pub fn _check_cage_handler_exists(cageid: u64) -> bool {
 /// 1. The lookup path is:
 ///        HANDLERTABLE[self_cageid][syscall_num][target_cageid]
 ///
-/// 2. If `target_cageid == RAWPOSIX_CAGEID`:
+/// 2. If `target_cageid == self_cageid` (i.e., RAWPOSIX lookup):
 ///        - If an explicit RAWPOSIX handler exists, return it.
 ///        - Otherwise, fallback to ANY registered handler under
 ///          (self_cageid, syscall_num).
@@ -67,7 +67,7 @@ pub fn _check_cage_handler_exists(cageid: u64) -> bool {
 ///    Note: theoretically there could be only one **grate** handlers for each cage
 ///           Execeptions should only happen for fork/exec/exit calls (having WASMTIME_CAGEID entries)
 ///
-/// 3. If `target_cageid != RAWPOSIX_CAGEID`:
+/// 3. If `target_cageid != self_cageid`:
 ///        - An exact match is REQUIRED.
 ///        - If not found, panic (this is considered a logic error).
 ///
@@ -102,7 +102,7 @@ pub fn _get_handler(self_cageid: u64, syscall_num: u64, target_cageid: u64) -> O
         )
     });
 
-    if target_cageid == lind_platform_const::RAWPOSIX_CAGEID {
+    if target_cageid == self_cageid {
         // Prefer exact RAWPOSIX handler if registered
         if let Some(addr) = target_map.get(&lind_platform_const::RAWPOSIX_CAGEID) {
             return Some((lind_platform_const::RAWPOSIX_CAGEID, *addr));
@@ -199,7 +199,7 @@ pub fn _rm_cage_from_handler(cageid: u64) {
 ///
 /// At the moment, all glibc-originated cage syscalls issued through
 /// `MAKE_LEGACY_SYSCALL` unconditionally set the target cage ID to
-/// `RAWPOSIX_CAGEID`. From the perspective of the glibc cage, every
+/// `self_cageid`. From the perspective of the glibc cage, every
 /// syscall is therefore dispatched toward RAWPOSIX by default. This
 /// means that even if a grate has already registered an interposed
 /// handler for a given `(srccage, syscall)`, the cage itself has no
@@ -208,15 +208,11 @@ pub fn _rm_cage_from_handler(cageid: u64) {
 ///
 /// As a result, when the syscall reaches 3i, distinguishing the true
 /// intended target becomes difficult. The original target cage was set
-/// to RAWPOSIX by glibc, and no additional metadata is available at the
+/// to self_cageid by glibc, and no additional metadata is available at the
 /// call site to indicate that a non-RAWPOSIX grate handler should be
 /// preferred. One possible strategy would be to infer intent based on
 /// the number of registered handlers, for example choosing a non-RAWPOSIX
-/// handler whenever more than one entry exists. However, this heuristic
-/// breaks down for syscalls such as `clone`, `exec`, and `exit`, which
-/// inherently require multiple handlers (e.g., one for RAWPOSIX and one
-/// for Wasmtime). In those cases, handler multiplicity does not encode
-/// meaningful dispatch intent.
+/// handler whenever more than one entry exists.
 ///
 /// To reduce complexity and avoid ambiguous runtime inference, we adopt
 /// a simpler registration policy. Whenever a specific grate handler is

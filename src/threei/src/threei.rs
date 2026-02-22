@@ -278,7 +278,7 @@ pub static EXITING_TABLE: Lazy<DashSet<u64>> = Lazy::new(|| DashSet::new());
 /// 0 on success.
 /// ELINDESRCH if either the source (targetcage) or destination (handlefunccage) is in the EXITING state.
 /// Panics if there is an attempt to overwrite an existing handler with a different destination cage.
-pub extern "C" fn register_handler(
+pub fn register_handler(
     _self_cageid: u64, // place holder to fit make_syscall's argument pattern, currently not used in the function
     _target_cageid: u64, // place holder to fit make_syscall's argument pattern, currently not used in the function
     targetcage: u64,
@@ -324,7 +324,7 @@ pub extern "C" fn register_handler(
 /// - 0 on success.
 /// - `ELINDESRCH` if either source or target cage is in the EXITING state.
 /// - `ELINDAPIABORTED` if srccage has no existing handler table.
-pub extern "C" fn copy_handler_table_to_cage(
+pub fn copy_handler_table_to_cage(
     _callnum: u64,
     targetcage: u64,
     srccage: u64,

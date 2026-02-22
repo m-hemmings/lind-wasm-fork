@@ -164,3 +164,23 @@ int copy_data_between_cages(uint64_t thiscage, uint64_t targetcage, uint64_t src
         0 /* translate_errno=0: we want to return the raw result without errno translation */
     );
 }
+
+// 3i function call to copy handler table to a target cage
+// thiscage: the cage id of the caller cage
+// targetcage: the cage id of the target cage
+int copy_handler_table_to_cage(uint64_t thiscage, uint64_t targetcage)
+{
+    return make_threei_call(
+        COPY_HANDLER_TABLE_TO_CAGE_SYSCALL, 
+        0, // callname is not used in the trampoline, set to 0
+        thiscage, 
+        targetcage,
+        0, 0,
+        0, 0,
+        0, 0,
+        0, 0,
+        0, 0,
+        0, 0,
+        0 /* translate_errno=0: we want to return the raw result without errno translation */
+    );
+}

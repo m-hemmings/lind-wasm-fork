@@ -120,6 +120,7 @@
 /* Lind-specific syscalls (not part of the Linux syscall table) */
 #define REGISTER_HANDLER_SYSCALL 1001
 #define COPY_DATA_BETWEEN_CAGES_SYSCALL 1002
+#define COPY_HANDLER_TABLE_TO_CAGE_SYSCALL 1003
 
 #endif /* _LIND_SYSCALL_NUM_H */
  

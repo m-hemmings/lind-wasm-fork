@@ -85,7 +85,7 @@ pub fn add_to_linker<
             // Concretely, for CLONE/EXEC we override arg2 with the current tid so that, when the call back
             // to wasmtime, it can resolve the correct thread instance deterministically, independent of
             // interposition or cross-cage routing.
-            let final_arg2 = if target_cageid == lind_platform_const::RAWPOSIX_CAGEID
+            let final_arg2 = if target_cageid == self_cageid
                 && matches!(call_number as i32, CLONE_SYSCALL | EXIT_SYSCALL)
             {
                 wasmtime_lind_multi_process::current_tid(&mut caller) as u64

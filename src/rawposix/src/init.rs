@@ -185,6 +185,9 @@ pub fn rawposix_start(verbosity: isize) {
         libc::mkdir(lindfs_path.as_ptr(), 0o775);
         let ret = libc::chroot(lindfs_path.as_ptr());
 
+        // When using lind-perf, modules are run multiple times.
+        // `rawposix_start` is invoked for every run, and a duplicate chroot causes an error. This
+        // ensure that the error checking is disabled in case of benchmark runs.
         #[cfg(not(feature = "lind_perf"))]
         if ret != 0 {
             panic!(

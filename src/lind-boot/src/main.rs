@@ -7,7 +7,10 @@ use crate::{
     lind_wasmtime::{execute_wasmtime, precompile_module},
 };
 use clap::Parser;
+
+#[cfg(feature = "lind_perf")]
 use lind_perf::TimerKind;
+
 use rawposix::init::{rawposix_shutdown, rawposix_start};
 
 /// Entry point of the lind-boot executable.
@@ -23,8 +26,10 @@ use rawposix::init::{rawposix_shutdown, rawposix_start};
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let lindboot_cli = CliOptions::parse();
 
+    // lind-perf related benchmarking runs.
     #[cfg(feature = "lind_perf")]
     {
+        // Determine which timer to use. --perftsc => Rdtsc, --perf => Clock
         let kind = if lindboot_cli.perftsc {
             Some(TimerKind::Rdtsc)
         } else if lindboot_cli.perf {
@@ -35,8 +40,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         match kind {
             Some(k) => {
+                // Initiate all counters
                 perf::enabled::init(k);
 
+                // Iterate over all counters, enable one at a time, run the wasm module.
                 for name in perf::enabled::all_counter_names() {
                     perf::enabled::enable_one(name);
 
@@ -46,10 +53,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                     rawposix_shutdown();
                 }
+
+                // Print the final report.
                 perf::enabled::report();
 
                 return Ok(());
             }
+            // In case neither --perf flag is set, fall back to default lind-boot behaviour.
             None => {}
         };
     }

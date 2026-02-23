@@ -1,8 +1,13 @@
+#[cfg(feature = "lind_perf")]
 use crate::perf;
 use fdtables;
 use sysdefs::constants::err_const::{syscall_error, Errno};
 use typemap::datatype_conversion::*;
 
+/// libc_syscall emulates a regular RawPOSIX syscall that needs to invoke the Linux kernel with
+/// minimal argument and return value parsing.
+///
+/// Here we use the implementation for geteuid_syscall()
 pub extern "C" fn libc_syscall(
     cageid: u64,
     arg1: u64,
@@ -43,6 +48,11 @@ pub extern "C" fn libc_syscall(
     ret
 }
 
+/// fdtables_syscalls mimics syscalls that *don't* go into the Linux kernel but rather are resolved
+/// within lind. We use fdtables as an example path that the syscall might take.
+///
+/// Here the implementation is equivalent to calling `close(-1)`, vfd_arg is already set through
+/// glibc.
 pub extern "C" fn fdtables_syscall(
     cageid: u64,
     vfd_arg: u64,

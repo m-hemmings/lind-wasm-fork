@@ -52,15 +52,7 @@ dlsym_implementation (void *handle, const char *name, void *dl_caller)
   args.who = dl_caller;
   args.handle = handle;
   args.name = name;
-
-  /* Protect against concurrent loads and unloads.  */
-  // __rtld_lock_lock_recursive (GL(dl_load_lock));
-
-  // void *result = (_dlerror_run (dlsym_doit, &args) ? NULL : args.sym);
-
-  // __rtld_lock_unlock_recursive (GL(dl_load_lock));
-
-  // return result;
+  
   return __lind_dlsym(handle, name);
 }
 

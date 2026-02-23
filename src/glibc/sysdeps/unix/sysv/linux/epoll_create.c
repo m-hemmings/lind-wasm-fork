@@ -28,5 +28,4 @@ epoll_create (int size)
 {
    return MAKE_LEGACY_SYSCALL(EPOLL_CREATE_SYSCALL, "syscall|epoll_create", (uint64_t) size, NOTUSED, NOTUSED, NOTUSED, NOTUSED, NOTUSED, TRANSLATE_ERRNO_ON);
 }
-
 libc_hidden_def (epoll_create)

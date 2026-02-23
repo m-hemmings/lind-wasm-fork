@@ -28,12 +28,6 @@ int __lind_dlclose(void* handle) __attribute__((
 int
 __dlclose (void *handle)
 {
-// #ifdef SHARED
-//   if (GLRO (dl_dlfcn_hook) != NULL)
-//     return GLRO (dl_dlfcn_hook)->dlclose (handle);
-// #endif
-
-//   return _dlerror_run (GLRO (dl_close), handle) ? -1 : 0;
     return __lind_dlclose(handle);
 }
 versioned_symbol (libc, __dlclose, dlclose, GLIBC_2_34);

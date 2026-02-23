@@ -73,7 +73,6 @@ dlopen_implementation (const char *file, int mode, void *dl_caller)
   args.mode = mode;
   args.caller = dl_caller;
 
-  // return _dlerror_run (dlopen_doit, &args) ? NULL : args.new;
   return __lind_dlopen(file);
 }
 

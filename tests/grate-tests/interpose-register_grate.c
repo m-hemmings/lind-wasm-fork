@@ -5,7 +5,6 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
-#include <assert.h>
 
 // Dispatcher function
 int pass_fptr_to_wt(uint64_t fn_ptr_uint, uint64_t cageid, uint64_t arg1,
@@ -14,11 +13,11 @@ int pass_fptr_to_wt(uint64_t fn_ptr_uint, uint64_t cageid, uint64_t arg1,
                     uint64_t arg4cage, uint64_t arg5, uint64_t arg5cage,
                     uint64_t arg6, uint64_t arg6cage) {
   if (fn_ptr_uint == 0) {
-    fprintf(stderr, "[Grate|multi-register_grate] Invalid function ptr\n");
+    fprintf(stderr, "[Grate|interpose-register_grate] Invalid function ptr\n");
     return -1;
   }
 
-  printf("[Grate|multi-register_grate] Handling function ptr: %llu from cage: %llu\n",
+  printf("[Grate|interpose-register_grate] Handling function ptr: %llu from cage: %llu\n",
          fn_ptr_uint, cageid);
 
   int (*fn)(uint64_t) = (int (*)(uint64_t))(uintptr_t)fn_ptr_uint;
@@ -26,19 +25,54 @@ int pass_fptr_to_wt(uint64_t fn_ptr_uint, uint64_t cageid, uint64_t arg1,
   return fn(cageid);
 }
 
-// Function ptr and signatures of this grate
 int geteuid_grate(uint64_t);
 
 int geteuid_grate(uint64_t cageid) {
-  printf("[Grate|multi-register_grate] In multi-register_grate %d handler for cage: %llu\n",
+  printf("[Grate|interpose-register_grate] In geteuid_grate %d handler for cage: %llu\n",
          getpid(), cageid);
   return 10;
+}
+
+// Function ptr and signatures of this grate
+int register_handler_grate(uint64_t,
+    uint64_t, uint64_t, 
+    uint64_t, uint64_t, 
+    uint64_t, uint64_t, 
+    uint64_t, uint64_t,
+    uint64_t, uint64_t,
+    uint64_t, uint64_t,
+);
+
+int register_handler_grate(uint64_t cageid, 
+    uint64_t arg1, uint64_t arg1cage, 
+    uint64_t arg2, uint64_t arg2cage,
+    uint64_t arg3, uint64_t arg3cage, 
+    uint64_t arg4, uint64_t arg4cage, 
+    uint64_t arg5, uint64_t arg5cage,
+    uint64_t arg6, uint64_t arg6cage) {
+  printf("[Grate|interpose-register_grate] In interpose-register_grate %d handler for cage: %llu\n",
+         getpid(), cageid);
+  int self_grate_id = getpid();
+  int ret = make_threei_call(
+    1001, // syscallnum for register_handler
+    0,    // callname is not used in the trampoline, set to 0
+    self_grate_id,    // self_grate_id is not used in the trampoline, set to 0
+    999999,    // target_cageid is not used in the trampoline, set to 0
+    arg1, arg1cage, 
+    arg2, arg2cage,
+    arg3, arg3cage, 
+    arg4, arg4cage, 
+    arg5, arg5cage,
+    arg6, arg6cage,
+    0 // we will handle the errno in this grate instead of translating it to -1 in the trampoline
+  );
+  return ret;
 }
 
 int getuid_grate(uint64_t);
 
 int getuid_grate(uint64_t cageid) {
-  printf("[Grate|multi-register_grate] In multi-register_grate %d handler for cage: %llu\n",
+  printf("[Grate|interpose-register_grate] In interpose-register_grate %d handler for cage: %llu\n",
          getpid(), cageid);
   return 20;
 }
@@ -73,25 +107,16 @@ int main(int argc, char *argv[]) {
       if (i % 2 != 0) {
         // Next one is cage, only set the register_handler when next one is cage
         int cageid = getpid();
-        // Set the geteuid (syscallnum=107) of this cage to call this grate
-        // function geteuid_grate (func index=0) Syntax of register_handler:
-        // <targetcage, targetcallnum, this_grate_id, fn_ptr_u64)>
-        uint64_t fn_ptr_addr_geteuid = (uint64_t)(uintptr_t)&geteuid_grate;
-        printf("[Grate|multi-register_grate] Registering geteuid handler for cage %d in "
-               "grate %d with fn ptr addr: %llu\n",
-               cageid, grateid, fn_ptr_addr_geteuid);
-        // geteuid syscallnum=107
-        register_handler(cageid, 107, grateid, fn_ptr_addr_geteuid);
-        // Set the geteuid (syscallnum=107) of this cage to call this grate
-        // function geteuid_grate (func index=0) Syntax of register_handler:
+        // Set the register_handler (syscallnum=1001) of this cage to call this grate
+        // function register_handler_grate (func index=0) Syntax of register_handler:
         // <targetcage, targetcallnum, handlefunc_flag (deregister(0) or register
         // (non-zero), this_grate_id, fn_ptr_u64)>
-        uint64_t fn_ptr_addr_getuid = (uint64_t)(uintptr_t)&getuid_grate;
-        printf("[Grate|multi-register_grate] Registering geteuid handler for cage %d in "
+        uint64_t fn_ptr_addr_register_handler = (uint64_t)(uintptr_t)&register_handler_grate;
+        printf("[Grate|interpose-register_grate] Registering register_handler handler for cage %d in "
                "grate %d with fn ptr addr: %llu\n",
-               cageid, grateid, fn_ptr_addr_getuid);
-        // getuid syscallnum=102
-        register_handler(cageid, 102, grateid, fn_ptr_addr_getuid);
+               cageid, grateid, fn_ptr_addr_register_handler);
+        // register_handler syscallnum=1001
+        register_handler(cageid, 1001, grateid, fn_ptr_addr_register_handler);
       }
 
       if (execv(argv[i], &argv[i]) == -1) {
@@ -105,12 +130,12 @@ int main(int argc, char *argv[]) {
 
   while (wait(&status) > 0) {
     if (status != 0) {
-      fprintf(stderr, "[Grate|multi-register] FAIL: child exited with status %d\n", status);
+      fprintf(stderr, "[Grate|interpose-register_grate] FAIL: child exited with status %d\n", status);
       assert(0);
       return EXIT_FAILURE;
     }
   }
 
-  printf("[Grate|multi-register] PASS\n");
+  printf("[Grate|interpose-register_grate] PASS\n");
   return 0;
 }

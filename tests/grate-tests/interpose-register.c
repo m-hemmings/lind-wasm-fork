@@ -5,14 +5,8 @@
 
 int main(int argc, char *argv[]) {
     int ret_euid = geteuid();
-    int ret_uid = getuid();
     if (ret_euid != 10) {
         fprintf(stderr, "[Cage | multi-register] FAIL: geteuid expected 10, got %d\n", ret_euid);
-        assert(0);
-        exit(EXIT_FAILURE);
-    }
-    if (ret_uid != 20) {
-        fprintf(stderr, "[Cage | multi-register] FAIL: getuid expected 20, got %d\n", ret_uid);
         assert(0);
         exit(EXIT_FAILURE);
     }

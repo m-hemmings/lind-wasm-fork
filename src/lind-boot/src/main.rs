@@ -7,6 +7,7 @@ use crate::{
     lind_wasmtime::{execute_wasmtime, precompile_module},
 };
 use clap::Parser;
+use lind_perf::TimerKind;
 use rawposix::init::{rawposix_shutdown, rawposix_start};
 
 /// Entry point of the lind-boot executable.
@@ -24,32 +25,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     #[cfg(feature = "lind_perf")]
     {
-        if lindboot_cli.perftsc {
-            perf::enabled::set_timer_source(1);
-        }
+        let kind = if lindboot_cli.perftsc {
+            Some(TimerKind::Rdtsc)
+        } else if lindboot_cli.perf {
+            Some(TimerKind::Clock)
+        } else {
+            None
+        };
 
-        if lindboot_cli.perf || lindboot_cli.perftsc {
-            perf::enabled::reset_all();
+        match kind {
+            Some(k) => {
+                perf::enabled::init(k);
 
-            for name in perf::enabled::all_counter_names() {
-                if !perf::enabled::enable_only(name) {
-                    return Err(format!("unable to enable {}", name).into());
+                for name in perf::enabled::all_counter_names() {
+                    perf::enabled::enable_one(name);
+
+                    rawposix_start(0);
+
+                    let _ = execute_wasmtime(lindboot_cli.clone());
+
+                    rawposix_shutdown();
                 }
+                perf::enabled::report();
 
-                rawposix_start(0);
-
-                let _ = execute_wasmtime(lindboot_cli.clone());
-
-                rawposix_shutdown();
+                return Ok(());
             }
-
-            perf::enabled::report();
-
-            return Ok(());
-        }
+            None => {}
+        };
     }
 
-    // AOT-compile only — no runtime needed
+    // AOT-compile only �~@~T no runtime needed
     if lindboot_cli.precompile {
         precompile_module(&lindboot_cli)?;
         return Ok(());

@@ -6,13 +6,4 @@ pub mod enabled {
     pub static LIBC_SYSCALL: Counter = Counter::new("rawposix::libc_syscall");
 
     pub static ALL_COUNTERS: &[&Counter] = &[&FDTABLES_SYSCALL, &LIBC_SYSCALL];
-
-    pub fn reset_all() {
-        lind_perf::reset_all(ALL_COUNTERS);
-    }
-
-    pub fn report() {
-        lind_perf::report_header(Some(format!("RAWPOSIX")));
-        lind_perf::report(ALL_COUNTERS);
-    }
 }

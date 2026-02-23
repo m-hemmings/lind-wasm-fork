@@ -1,5 +1,5 @@
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
-use std::time::{Instant, Duration};
+use std::time::Duration;
 
 struct PrettyDuration(Duration);
 
@@ -132,7 +132,7 @@ impl Drop for Scope<'_> {
 fn read_start(kind: TimerKind) -> u64 {
     match kind {
         TimerKind::Rdtsc => rdtsc_start_inner(),
-        TimerKind::Clock => clock_now_nanos_inner(),
+        TimerKind::Clock => clock_now(),
     }
 }
 
@@ -140,62 +140,45 @@ fn read_start(kind: TimerKind) -> u64 {
 fn read_end(kind: TimerKind) -> u64 {
     match kind {
         TimerKind::Rdtsc => rdtsc_end_inner(),
-        TimerKind::Clock => clock_now_nanos_inner(),
+        TimerKind::Clock => clock_now(),
     }
 }
 
 #[inline(always)]
 fn rdtsc_start_inner() -> u64 {
-    #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
+    #[cfg(target_arch = "x86_64")]
     unsafe {
-        #[cfg(target_arch = "x86_64")]
         core::arch::x86_64::_mm_lfence();
-        #[cfg(target_arch = "x86")]
-        core::arch::x86::_mm_lfence();
-        #[cfg(target_arch = "x86_64")]
         return core::arch::x86_64::_rdtsc();
-        #[cfg(target_arch = "x86")]
-        return core::arch::x86::_rdtsc();
     }
+    return clock_now();
 }
 
 #[inline(always)]
 fn rdtsc_end_inner() -> u64 {
-    #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
+    #[cfg(target_arch = "x86_64")]
     unsafe {
         let mut aux = 0u32;
-        #[cfg(target_arch = "x86_64")]
         let tsc = core::arch::x86_64::__rdtscp(&mut aux);
-        #[cfg(target_arch = "x86")]
-        let tsc = core::arch::x86::__rdtscp(&mut aux);
-        #[cfg(target_arch = "x86_64")]
         core::arch::x86_64::_mm_lfence();
-        #[cfg(target_arch = "x86")]
-        core::arch::x86::_mm_lfence();
-        tsc
+        return tsc;
     }
+    return clock_now();
 }
 
 #[inline(always)]
-fn instant_nanos_inner() -> u64 {
-    static START: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
-    let start = START.get_or_init(Instant::now);
-    start.elapsed().as_nanos() as u64
-}
-
-#[inline(always)]
-fn clock_now_nanos_inner() -> u64 {
+fn clock_now() -> u64 {
     let mut ts = libc::timespec {
         tv_sec: 0,
         tv_nsec: 0,
     };
     let rc = unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC_RAW, &mut ts) };
-    if rc == 0 {
-        return (ts.tv_sec as u64)
-            .saturating_mul(1_000_000_000)
-            .saturating_add(ts.tv_nsec as u64);
+    if rc != 0 {
+        panic!("Unable to get a CLOCK_MONOTONIC_RAW time. Aborting benchmarks.");
     }
-    return instant_nanos_inner();
+    return (ts.tv_sec as u64)
+        .saturating_mul(1_000_000_000)
+        .saturating_add(ts.tv_nsec as u64);
 }
 
 const fn default_timer_kind() -> TimerKind {
@@ -208,22 +191,29 @@ pub fn reset_all(counters: &[&Counter]) {
     }
 }
 
-pub fn report_header(title: Option<String>) {
-    let (header, pad) = match title {
-        Some(v) => (v,"-"),
-        None => (format!("LIND PERF"),"="),
-    };
+pub fn set_timer(counters: &[&Counter], kind: TimerKind) {
+    for c in counters {
+        c.set_timer_kind(kind);
+    }
+}
 
+pub fn enable_name(counters: &[&Counter], name: &str) {
+    for c in counters {
+        if c.name == name {
+            c.enable();
+        } else {
+            c.disable();
+        }
+    }
+}
+
+pub fn report_header(header: String) {
+    let pad = "-";
     let total = 97 - header.len();
     let left = total / 2;
     let right = total - left;
 
-    println!(
-        "\n{}{}{}",
-        pad.repeat(left),
-        header,
-        pad.repeat(right),
-    );
+    println!("\n{}{}{}", pad.repeat(left), header, pad.repeat(right),);
 }
 
 pub fn report(counters: &[&Counter]) {
@@ -231,7 +221,6 @@ pub fn report(counters: &[&Counter]) {
     const NAME_W: usize = 60;
     const CALLS_W: usize = 10;
     const NUM_W: usize = 12;
-
 
     let mut rows: Vec<String> = Vec::new();
 
@@ -243,21 +232,26 @@ pub fn report(counters: &[&Counter]) {
 
         let cycles = match c.timer_kind() {
             TimerKind::Rdtsc => format!("{:#?}", c.cycles.load(Ordering::Relaxed)),
-            TimerKind::Clock => format!("{}", PrettyDuration(Duration::from_nanos(c.cycles.load(Ordering::Relaxed)))),
+            TimerKind::Clock => format!(
+                "{}",
+                PrettyDuration(Duration::from_nanos(c.cycles.load(Ordering::Relaxed)))
+            ),
         };
 
         let avg = match c.timer_kind() {
             TimerKind::Rdtsc => format!("{:#?}", c.cycles.load(Ordering::Relaxed) / calls),
-            TimerKind::Clock => format!("{}", PrettyDuration(Duration::from_nanos(c.cycles.load(Ordering::Relaxed) / calls))),
+            TimerKind::Clock => format!(
+                "{}",
+                PrettyDuration(Duration::from_nanos(
+                    c.cycles.load(Ordering::Relaxed) / calls
+                ))
+            ),
         };
 
         // {:<UNIT_W$}
         rows.push(format!(
             "{:<NAME_W$} {:>CALLS_W$} {:>NUM_W$} {:>NUM_W$}",
-            c.name,
-            calls,
-            cycles,
-            avg,
+            c.name, calls, cycles, avg,
         ));
     }
 
@@ -267,16 +261,10 @@ pub fn report(counters: &[&Counter]) {
 
     eprintln!(
         "{:<NAME_W$} {:>CALLS_W$} {:>NUM_W$} {:>NUM_W$}",
-        "name",
-        "calls",
-        "total",
-        "avg",
+        "name", "calls", "total", "avg",
     );
 
-    eprintln!(
-        "{}",
-        "-".repeat(NAME_W + CALLS_W + NUM_W * 2 + 3)
-    );
+    eprintln!("{}", "-".repeat(NAME_W + CALLS_W + NUM_W * 2 + 3));
 
     for i in rows {
         eprintln!("{}", i);

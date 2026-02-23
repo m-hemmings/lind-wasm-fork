@@ -15,13 +15,4 @@ pub mod enabled {
         &CALL_GRATE_FUNC,
         &CALL_GRATE_FUNC_GET_RUNTIME_TRAMPOLINE,
     ];
-
-    pub fn reset_all() {
-        lind_perf::reset_all(ALL_COUNTERS);
-    }
-
-    pub fn report() {
-        lind_perf::report_header(Some(format!("THREEI")));
-        lind_perf::report(ALL_COUNTERS);
-    }
 }

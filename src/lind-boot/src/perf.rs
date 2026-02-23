@@ -1,14 +1,13 @@
 #[cfg(feature = "lind_perf")]
 pub mod enabled {
-    use lind_perf::Counter;
+    use lind_perf::{enable_name, reset_all, set_timer, Counter, TimerKind};
 
     pub static READ_WASM_OR_CWASM: Counter = Counter::new("lind_boot::read_wasm_or_cwasm");
     pub static LOAD_MAIN_MODULE: Counter = Counter::new("lind_boot::load_main_module");
     pub static INVOKE_FUNC: Counter = Counter::new("lind_boot::invoke_func");
     pub static GRATE_CALLBACK_TRAMPOLINE: Counter =
         Counter::new("lind_boot::grate_callback_trampoline");
-    pub static TRAMPOLINE_GET_VMCTX: Counter =
-        Counter::new("lind_boot::trampoline::get_vmctx");
+    pub static TRAMPOLINE_GET_VMCTX: Counter = Counter::new("lind_boot::trampoline::get_vmctx");
     pub static TRAMPOLINE_CALLER_WITH: Counter =
         Counter::new("lind_boot::trampoline::Caller::with");
     pub static TRAMPOLINE_GET_PASS_FPTR_TO_WT: Counter =
@@ -16,7 +15,7 @@ pub mod enabled {
     pub static TRAMPOLINE_TYPED_DISPATCH_CALL: Counter =
         Counter::new("lind_boot::trampoline::typed_dispatch_call");
 
-    pub static ALL_COUNTERS: &[&Counter] = &[
+    pub static LIND_BOOT_COUNTERS: &[&Counter] = &[
         &READ_WASM_OR_CWASM,
         &LOAD_MAIN_MODULE,
         &INVOKE_FUNC,
@@ -27,102 +26,56 @@ pub mod enabled {
         &TRAMPOLINE_TYPED_DISPATCH_CALL,
     ];
 
-    fn set_timer_for_slice(counters: &[&Counter], kind: lind_perf::TimerKind) {
-        for c in counters {
-            c.set_timer_kind(kind);
-        }
+    pub fn init(kind: TimerKind) {
+        set_timer(LIND_BOOT_COUNTERS, kind);
+        set_timer(wasmtime_lind_common::perf::enabled::ALL_COUNTERS, kind);
+        set_timer(rawposix::perf::enabled::ALL_COUNTERS, kind);
+        set_timer(threei::perf::enabled::ALL_COUNTERS, kind);
+        set_timer(fdtables::perf::enabled::ALL_COUNTERS, kind);
+
+        reset_all(LIND_BOOT_COUNTERS);
+        reset_all(wasmtime_lind_common::perf::enabled::ALL_COUNTERS);
+        reset_all(rawposix::perf::enabled::ALL_COUNTERS);
+        reset_all(threei::perf::enabled::ALL_COUNTERS);
+        reset_all(fdtables::perf::enabled::ALL_COUNTERS);
     }
 
-    fn set_timer_for_all(kind: lind_perf::TimerKind) {
-        set_timer_for_slice(ALL_COUNTERS, kind);
-        set_timer_for_slice(wasmtime_lind_common::perf::enabled::ALL_COUNTERS, kind);
-        set_timer_for_slice(threei::perf::enabled::ALL_COUNTERS, kind);
-        set_timer_for_slice(rawposix::perf::enabled::ALL_COUNTERS, kind);
-        set_timer_for_slice(fdtables::perf::enabled::ALL_COUNTERS, kind);
-    }
-
-    fn set_only_in_slice(counters: &[&Counter], name: &str, found: &mut bool) {
-        for c in counters {
-            if c.name == name {
-                c.enable();
-                *found = true;
-            } else {
-                c.disable();
-            }
-        }
-    }
-
-    pub fn enable_only(name: &str) -> bool {
-        let mut found = false;
-        set_only_in_slice(ALL_COUNTERS, name, &mut found);
-        set_only_in_slice(threei::perf::enabled::ALL_COUNTERS, name, &mut found);
-        set_only_in_slice(rawposix::perf::enabled::ALL_COUNTERS, name, &mut found);
-        set_only_in_slice(fdtables::perf::enabled::ALL_COUNTERS, name, &mut found);
-        set_only_in_slice(wasmtime_lind_common::perf::enabled::ALL_COUNTERS, name, &mut found);
-        found
-    }
-
-    pub fn reset_all() {
-        lind_perf::reset_all(ALL_COUNTERS);
-        threei::perf::enabled::reset_all();
-        rawposix::perf::enabled::reset_all();
-        fdtables::perf::enabled::reset_all();
-        wasmtime_lind_common::perf::enabled::reset_all();
-    }
-
-    pub fn report() {
-        lind_perf::report_header(None);
-
-        lind_perf::report_header(Some(format!("LIND-BOOT")));
-        lind_perf::report(ALL_COUNTERS);
-
-        wasmtime_lind_common::perf::enabled::report();
-        threei::perf::enabled::report();
-        rawposix::perf::enabled::report();
-        fdtables::perf::enabled::report();
+    pub fn enable_one(name: &str) {
+        enable_name(LIND_BOOT_COUNTERS, name);
+        enable_name(wasmtime_lind_common::perf::enabled::ALL_COUNTERS, name);
+        enable_name(rawposix::perf::enabled::ALL_COUNTERS, name);
+        enable_name(threei::perf::enabled::ALL_COUNTERS, name);
+        enable_name(fdtables::perf::enabled::ALL_COUNTERS, name);
     }
 
     pub fn all_counter_names() -> Vec<&'static str> {
         let mut names = Vec::new();
-        for c in ALL_COUNTERS {
-            names.push(c.name);
-        }
-        for c in wasmtime_lind_common::perf::enabled::ALL_COUNTERS {
-            names.push(c.name);
-        }
-        for c in threei::perf::enabled::ALL_COUNTERS {
-            names.push(c.name);
-        }
-        for c in rawposix::perf::enabled::ALL_COUNTERS {
-            names.push(c.name);
-        }
-        for c in fdtables::perf::enabled::ALL_COUNTERS {
-            names.push(c.name);
-        }
+        names.extend(LIND_BOOT_COUNTERS.iter().map(|c| c.name));
+        names.extend(
+            wasmtime_lind_common::perf::enabled::ALL_COUNTERS
+                .iter()
+                .map(|c| c.name),
+        );
+        names.extend(threei::perf::enabled::ALL_COUNTERS.iter().map(|c| c.name));
+        names.extend(rawposix::perf::enabled::ALL_COUNTERS.iter().map(|c| c.name));
+        names.extend(fdtables::perf::enabled::ALL_COUNTERS.iter().map(|c| c.name));
         names
     }
 
-    pub fn set_timer_source(source: i32) {
-        match source {
-            1 => set_timer_for_all(lind_perf::TimerKind::Rdtsc),
-            _ => set_timer_for_all(lind_perf::TimerKind::Clock),
-        }
-    }
-}
+    pub fn report() {
+        lind_perf::report_header(format!("LIND-BOOT"));
+        lind_perf::report(LIND_BOOT_COUNTERS);
 
-/*
-#[cfg(not(feature = "lind_perf"))]
-pub mod enabled {
-    pub fn enable_all() {}
-    pub fn enable_only(_name: &str) -> bool {
-        false
+        lind_perf::report_header(format!("LIND-COMMON"));
+        lind_perf::report(wasmtime_lind_common::perf::enabled::ALL_COUNTERS);
+
+        lind_perf::report_header(format!("THREE-I"));
+        lind_perf::report(threei::perf::enabled::ALL_COUNTERS);
+
+        lind_perf::report_header(format!("RAWPOSIX"));
+        lind_perf::report(rawposix::perf::enabled::ALL_COUNTERS);
+
+        lind_perf::report_header(format!("FDTABLES"));
+        lind_perf::report(fdtables::perf::enabled::ALL_COUNTERS);
     }
-    pub fn disable_all() {}
-    pub fn reset_all() {}
-    pub fn report() {}
-    pub fn all_counter_names() -> Vec<&'static str> {
-        Vec::new()
-    }
-    pub fn set_timer_source(_source: i32) {}
 }
-*/

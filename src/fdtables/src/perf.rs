@@ -8,15 +8,4 @@ pub mod enabled {
 
     /// Define a list of all counters
     pub static ALL_COUNTERS: &[&Counter] = &[&CLOSE_VIRTUALFD];
-
-    /// Reset all counters in this module to 0
-    pub fn reset_all() {
-        lind_perf::reset_all(ALL_COUNTERS);
-    }
-
-    /// Print a report for all counters
-    pub fn report() {
-        lind_perf::report_header(Some(format!("FDTABLES")));
-        lind_perf::report(ALL_COUNTERS);
-    }
 }

@@ -50,7 +50,6 @@ use wasmtime_wasi_threads::WasiThreadsCtx;
 pub fn execute_wasmtime(lindboot_cli: CliOptions) -> anyhow::Result<Vec<Val>> {
     // -- Initialize the Wasmtime execution environment --
     let wasm_file_path = Path::new(lindboot_cli.wasm_file());
-    println!("[debug] wasm_file_path: {:?}", wasm_file_path);
     let args = lindboot_cli.args.clone();
     let wt_config = make_wasmtime_config(lindboot_cli.wasmtime_backtrace);
     let engine = Engine::new(&wt_config).context("failed to create execution engine")?;
@@ -85,7 +84,6 @@ pub fn execute_wasmtime(lindboot_cli: CliOptions) -> anyhow::Result<Vec<Val>> {
     // Set up the WASI. In lind-wasm, we predefine all the features we need are `thread` and `wasipreview1`
     // so we manually add them to the linker without checking the input
     let module = read_wasm_or_cwasm(&engine, wasm_file_path)?;
-    // let mut linker = Linker::new(&engine);
     let mut linker = Arc::new(Mutex::new(Linker::new(&engine)));
 
     let mut table;
@@ -133,7 +131,7 @@ pub fn execute_wasmtime(lindboot_cli: CliOptions) -> anyhow::Result<Vec<Val>> {
         // calculate the stack address for main module
         let stack_low_num = 1024; // reserve first 1024 bytes for guard page
         let stack_high_num = stack_low_num + 8388608; // 8 MB of default stack size
-        // #[cfg(feature = "debug-dylink")]
+        #[cfg(feature = "debug-dylink")]
         println!(
             "[debug] main module stack pointer starts from {} to {}",
             stack_low_num, stack_high_num
@@ -291,6 +289,7 @@ pub fn execute_wasmtime(lindboot_cli: CliOptions) -> anyhow::Result<Vec<Val>> {
             CAGE_START_ID as u64,
             &args,
             lind_got.clone(),
+            &mut table,
         )
         .with_context(|| format!("failed to run main module"))
     });
@@ -345,6 +344,8 @@ pub fn execute_with_lind(
     // create Global Offset Table for dynamic loading
     // #[cfg(feature = "dylink-support")]
     let mut lind_got = Arc::new(Mutex::new(LindGOT::new()));
+    let ty = wasmtime::TableType::new(wasmtime::RefType::FUNCREF, 0, None);
+    let mut table = wasmtime::Table::new(&mut wstore, ty, wasmtime::Ref::Func(None)).unwrap();
 
     attach_api(
         &mut wstore,
@@ -353,7 +354,7 @@ pub fn execute_with_lind(
         lind_manager.clone(),
         lind_boot.clone(),
         Some(cageid as i32),
-        lind_got.clone()
+        lind_got.clone(),
     )?;
 
     // -- Run the module in the cage --
@@ -365,6 +366,7 @@ pub fn execute_with_lind(
             cageid as u64,
             &args,
             lind_got,
+            &mut table,
         )
         .with_context(|| format!("failed to run main module"))
     });
@@ -487,7 +489,6 @@ fn attach_api(
     cageid: Option<i32>,
     got: Arc<Mutex<LindGOT>>,
 ) -> Result<()> {
-    println!("[debug] attach api");
     // Setup WASI-p1
     // --- Why we still attach a WASI preview1 context (WasiCtx) even though we don't use wasi-libc ---
     //
@@ -529,8 +530,6 @@ fn attach_api(
     });
     drop(linker_guard);
 
-    println!("[debug] attach api wasi");
-
     let mut builder = WasiCtxBuilder::new();
     let _ = builder.inherit_stdio().args(&lindboot_cli.args);
     builder.inherit_stdin();
@@ -546,8 +545,6 @@ fn attach_api(
         |s: &mut HostCtx| s.wasi_threads.as_ref().unwrap(),
     );
 
-    println!("[debug] attach api wasi thread");
-
     let cloned_linker = linker.clone();
     let cloned_got = got.clone();
     
@@ -562,8 +559,6 @@ fn attach_api(
 
     // attach Lind common APIs to the linker
     let _ = wasmtime_lind_common::add_to_linker::<HostCtx, _>(&mut linker_guard, dynamic_loader)?;
-
-    println!("[debug] attach api lind common");
 
     // attach Lind-Multi-Process-Context to the host
     let _ = wstore.data_mut().lind_fork_ctx = Some(LindCtx::new(
@@ -589,11 +584,7 @@ fn attach_api(
         },
     )?);
 
-    println!("[debug] attach api lind multi-process");
-
     drop(linker_guard);
-
-    println!("[debug] attach api done");
 
     Ok(())
 }
@@ -608,6 +599,7 @@ fn load_main_module(
     cageid: u64,
     args: &[String],
     got: Arc<Mutex<LindGOT>>,
+    table: &mut wasmtime::Table,
 ) -> Result<Vec<Val>> {
     let mut linker_guard = linker.lock().unwrap();
 
@@ -705,15 +697,15 @@ fn load_main_module(
         drop(linker);
 
         // update GOT entries after main module is instantiated
-        // let mut funcs = vec![];
+        let mut funcs: Vec<(String, wasmtime::Func)> = vec![];
         let mut globals: Vec<(String, wasmtime::Global)> = vec![];
         for export in instance.exports(&mut store) {
             let name = export.name().to_owned();
             match export.into_extern() {
                 // I don't think main module should update GOT functions?
-                // Extern::Func(func) => {
-                //     funcs.push((name, func));
-                // },
+                wasmtime::Extern::Func(func) => {
+                    funcs.push((name, func));
+                },
                 wasmtime::Extern::Global(global) => {
                     globals.push((name, global));
                 }
@@ -721,12 +713,13 @@ fn load_main_module(
             }
         }
 
-        // for (name, func) in funcs {
-        //     let index = table.grow(&mut store, 1, crate::Ref::Func(Some(func))).unwrap();
-        //     if got.update_entry_if_exist(&name, index) {
-        //         println!("[debug] update GOT.func.{} to {}", name, index);
-        //     }
-        // }
+        for (name, func) in funcs {
+            let index = table.grow(&mut store, 1, wasmtime::Ref::Func(Some(func))).unwrap();
+            let mut guard = got.lock().unwrap();
+            if (*guard).update_entry_if_unresolved(&name, index) {
+                println!("[debug] update GOT.func.{} to {}", name, index);
+            }
+        }
         for (name, global) in globals {
             let val = global.get(&mut store);
             // relocate the variable

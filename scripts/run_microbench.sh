@@ -18,9 +18,9 @@ BENCH_ROOT="${REPO_ROOT}/tests/benchmarks"
 
 echo "Compiling Tests..."
 
-"${SCRIPT_DIR}/lind_compile" "${BENCH_ROOT}/libc_syscall.c" &>/dev/null && mv "${BENCH_ROOT}/libccall.wasm" "${REPO_ROOT}/lindfs/"
-"${SCRIPT_DIR}/lind_compile" "${BENCH_ROOT}/fdtables_syscall.c" &>/dev/null && mv "${BENCH_ROOT}/fdtcall.wasm" "${REPO_ROOT}/lindfs/"
-"${SCRIPT_DIR}/lind_compile" --compile-grate "${BENCH_ROOT}/grate_syscall.c" &>/dev/null && mv "${BENCH_ROOT}/gratecall.wasm" "${REPO_ROOT}/lindfs/"
+"${SCRIPT_DIR}/lind_compile" "${BENCH_ROOT}/libc_syscall.c" &>/dev/null && mv "${BENCH_ROOT}/libc_syscall.wasm" "${REPO_ROOT}/lindfs/"
+"${SCRIPT_DIR}/lind_compile" "${BENCH_ROOT}/fdtables_syscall.c" &>/dev/null && mv "${BENCH_ROOT}/fdtables_syscall.wasm" "${REPO_ROOT}/lindfs/"
+"${SCRIPT_DIR}/lind_compile" --compile-grate "${BENCH_ROOT}/grate_syscall.c" &>/dev/null && mv "${BENCH_ROOT}/grate_syscall.wasm" "${REPO_ROOT}/lindfs/"
 
 echo -en "\nLIBC Test\t"
 sudo lind-boot --perf libc_syscall.wasm

@@ -271,7 +271,6 @@ pub static EXITING_TABLE: Lazy<DashSet<u64>> = Lazy::new(|| DashSet::new());
 /// - in_grate_fn_ptr_u64: Pointer to the function inside the grate that will handle this syscall.
 /// - targetcage: The ID of the cage whose syscall table is being modified (i.e., the source of the syscall).
 /// - targetcallnum: The syscall number to interpose on (can be treated as a match-all in some configurations).
-/// - is_register: The operation flag to indicate whether to register or deregister.
 /// - handlefunccage: The cage (typically a grate) that owns the destination function to be called.
 ///
 /// ## Returns:
@@ -284,9 +283,9 @@ pub extern "C" fn register_handler(
     targetcage: u64,
     targetcallnum: u64,  // Syscall number or match-all indicator. todo: Match-all.
     _runtime_id: u64,    // Currently unused, reserved for future potential use
-    is_register: u64,    // 0 for deregister
     handlefunccage: u64, // Grate cage id _or_ Deregister flag (`THREEI_DEREGISTER`) or additional information
     in_grate_fn_ptr_u64: u64,
+    _arg3cageid: u64,
     _arg4: u64,
     _arg4cageid: u64,
     _arg5: u64,
@@ -303,7 +302,6 @@ pub extern "C" fn register_handler(
     register_handler_impl(
         targetcage,
         targetcallnum,
-        is_register,
         handlefunccage,
         in_grate_fn_ptr_u64,
     )

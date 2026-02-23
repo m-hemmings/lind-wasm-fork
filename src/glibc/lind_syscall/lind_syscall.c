@@ -118,7 +118,6 @@ int make_threei_call (unsigned int callnumber,
 // in_grate_fn_ptr_u64: the function pointer (cast to uint64_t) of the syscall handler in the grate, only used when register_flag is non-0
 int register_handler (int64_t targetcage, 
     uint64_t targetcallnum, 
-    uint64_t register_flag, 
     uint64_t this_grate_id,
     uint64_t in_grate_fn_ptr_u64)
 {
@@ -130,10 +129,9 @@ int register_handler (int64_t targetcage,
         targetcage, 
         targetcallnum, 
         0, // runtime_id currently not used, set to 0
-        register_flag, // is_register flag: 0 for deregister, non-0 for register
         this_grate_id, // handlefunccage is the grate id of the handler function, which is the same as this_grate_id
         in_grate_fn_ptr_u64,
-        0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0,
         0 /* translate_errno=0: we want to return the raw result without errno translation */
     );
 }

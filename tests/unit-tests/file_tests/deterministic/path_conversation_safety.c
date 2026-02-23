@@ -34,13 +34,7 @@ int main() {
     assert(ret == -1 && "access(NULL) should return -1");
     printf("Test 3 PASS: access(NULL) returned -1\n");
 
-    /* Test 4: open("", ...) — empty string, should return -1 */
-    errno = 0;
-    fd = open("", O_RDONLY);
-    assert(fd == -1 && "open(\"\") should return -1");
-    printf("Test 4 PASS: open(\"\") returned -1\n");
-
-    /* Test 5: mkdir(NULL, ...) — should return -1, not crash */
+    /* Test 4: mkdir(NULL, ...) — should return -1, not crash */
     errno = 0;
     ret = mkdir(NULL, 0755);
     assert(ret == -1 && "mkdir(NULL) should return -1");

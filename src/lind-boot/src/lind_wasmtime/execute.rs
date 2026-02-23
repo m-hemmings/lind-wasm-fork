@@ -10,13 +10,16 @@ use sysdefs::constants::lind_platform_const::{RAWPOSIX_CAGEID, WASMTIME_CAGEID};
 use threei::threei_const;
 use wasi_common::sync::WasiCtxBuilder;
 use wasmtime::{
-    AsContextMut, Engine, Func, InstantiateType, Linker, Module, Precompiled, Store, Val, ValType,
+    AsContextMut, Engine, Func, InstantiateType, Linker, Module, Store, Val, ValType,
     WasmBacktraceDetails,
 };
 use wasmtime_lind_3i::{VmCtxWrapper, init_vmctx_pool, rm_vmctx, set_vmctx, set_vmctx_thread};
 use wasmtime_lind_multi_process::{CAGE_START_ID, LindCtx, THREAD_START_ID};
 use wasmtime_lind_utils::LindCageManager;
 use wasmtime_wasi_threads::WasiThreadsCtx;
+
+#[cfg(feature = "lind_perf")]
+use crate::perf;
 
 /// Boots the Lind + RawPOSIX + 3i runtime and executes the initial Wasm program
 /// in the first cage.
@@ -376,6 +379,9 @@ fn load_main_module(
     cageid: u64,
     args: &[String],
 ) -> Result<Vec<Val>> {
+    #[cfg(feature = "lind_perf")]
+    let _perf_scope = perf::enabled::LOAD_MAIN_MODULE.scope();
+
     // todo:
     // I don't setup `epoch_handler` since it seems not being used by our previous implementation.
     // Not sure if this is related to our thread exit problem
@@ -534,6 +540,9 @@ fn read_wasm_or_cwasm(engine: &Engine, path: &Path) -> Result<Module> {
 /// This function takes a Wasm function (Func) and a list of string arguments, parses the
 /// arguments into Wasm values based on expected types (ValType), and invokes the function
 fn invoke_func(store: &mut Store<HostCtx>, func: Func, args: &[String]) -> Result<Vec<Val>> {
+    #[cfg(feature = "lind_perf")]
+    let _perf_scope = perf::enabled::INVOKE_FUNC.scope();
+
     let ty = func.ty(&store);
     if ty.params().len() > 0 {
         eprintln!(

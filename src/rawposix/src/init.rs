@@ -184,6 +184,8 @@ pub fn rawposix_start(verbosity: isize) {
         let lindfs_path = CString::new(LINDFS_ROOT).unwrap();
         libc::mkdir(lindfs_path.as_ptr(), 0o775);
         let ret = libc::chroot(lindfs_path.as_ptr());
+
+        #[cfg(not(feature = "lind_perf"))]
         if ret != 0 {
             panic!(
                 "Failed to chroot to {}: {}",
@@ -191,6 +193,7 @@ pub fn rawposix_start(verbosity: isize) {
                 std::io::Error::last_os_error()
             );
         }
+
         let root = CString::new("/").unwrap();
         let ret = libc::chdir(root.as_ptr());
         if ret != 0 {

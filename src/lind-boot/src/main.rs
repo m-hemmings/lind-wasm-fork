@@ -1,5 +1,6 @@
 mod cli;
 mod lind_wasmtime;
+mod perf;
 
 use crate::{
     cli::CliOptions,
@@ -21,6 +22,33 @@ use rawposix::init::{rawposix_shutdown, rawposix_start};
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let lindboot_cli = CliOptions::parse();
 
+    #[cfg(feature = "lind_perf")]
+    {
+        if lindboot_cli.perftsc {
+            perf::enabled::set_timer_source(1);
+        }
+
+        if lindboot_cli.perf || lindboot_cli.perftsc {
+            perf::enabled::reset_all();
+
+            for name in perf::enabled::all_counter_names() {
+                if !perf::enabled::enable_only(name) {
+                    return Err(format!("unable to enable {}", name).into());
+                }
+
+                rawposix_start(0);
+
+                let _ = execute_wasmtime(lindboot_cli.clone());
+
+                rawposix_shutdown();
+            }
+
+            perf::enabled::report();
+
+            return Ok(());
+        }
+    }
+
     // AOT-compile only — no runtime needed
     if lindboot_cli.precompile {
         precompile_module(&lindboot_cli)?;
@@ -32,10 +60,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Execute with user-selected runtime. Can be switched to other runtime implementation
     // in the future (e.g.: MPK).
-    execute_wasmtime(lindboot_cli)?;
+    let run_result = execute_wasmtime(lindboot_cli.clone());
 
     // after all cage exits, finalize the lind
     rawposix_shutdown();
+
+    run_result?;
 
     Ok(())
 }

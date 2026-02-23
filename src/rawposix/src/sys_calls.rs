@@ -1,6 +1,7 @@
 //! System syscalls implementation
 //!
 //! This module contains all system calls that are being emulated/faked in Lind.
+use crate::perf;
 use cage::memory::vmmap::{VmmapOps, *};
 use cage::signal::signal::{convert_signal_mask, lind_send_signal, signal_check_trigger};
 use cage::timer::IntervalTimer;
@@ -803,6 +804,9 @@ pub extern "C" fn geteuid_syscall(
     arg6: u64,
     arg6_cageid: u64,
 ) -> i32 {
+    #[cfg(feature = "lind_perf")]
+    let _geteuid_scope = perf::enabled::GETEUID_SYSCALL.scope();
+
     // Validate that each extra argument is unused.
     if !(sc_unusedarg(arg1, arg1_cageid)
         && sc_unusedarg(arg2, arg2_cageid)
@@ -817,7 +821,12 @@ pub extern "C" fn geteuid_syscall(
         );
     }
 
-    (unsafe { libc::geteuid() }) as i32
+    let ret = (unsafe { libc::geteuid() }) as i32;
+
+    #[cfg(feature = "lind_perf")]
+    std::hint::black_box(&_geteuid_scope);
+
+    ret
 }
 
 /// Reference to Linux: https://man7.org/linux/man-pages/man2/sigaction.2.html

@@ -118,4 +118,6 @@ pub const SYSCALL_TABLE: &[(u64, RawCallFunc)] = &[
     (292, dup3_syscall),
     (293, pipe2_syscall),
     (318, getrandom_syscall),
+    (2001, geteuid_syscall),
+    (2002, close_syscall),
 ];

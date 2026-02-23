@@ -6,6 +6,9 @@ use wasmtime::{Caller, Instance};
 use wasmtime_lind_3i::{VmCtxWrapper, get_vmctx, set_vmctx};
 use wasmtime_lind_multi_process;
 
+#[cfg(feature = "lind_perf")]
+use crate::perf;
+
 /// The callback function registered with 3i uses a unified Wasm entry
 /// function as the single re-entry point into the Wasm executable.
 ///
@@ -45,12 +48,19 @@ pub extern "C" fn grate_callback_trampoline(
     arg6: u64,
     arg6cageid: u64,
 ) -> i32 {
+    #[cfg(feature = "lind_perf")]
+    let _trampoline_scope = perf::enabled::GRATE_CALLBACK_TRAMPOLINE.scope();
+
+    #[cfg(feature = "lind_perf")]
+    let _get_vmctx_scope = perf::enabled::TRAMPOLINE_GET_VMCTX.scope();
     let vmctx_wrapper: VmCtxWrapper = match get_vmctx(cageid) {
         Some(v) => v,
         None => {
             panic!("no VMContext found for cage_id {}", cageid);
         }
     };
+    #[cfg(feature = "lind_perf")]
+    drop(_get_vmctx_scope);
 
     // Convert back to VMContext
     let opaque: *mut VMOpaqueContext = vmctx_wrapper.as_ptr() as *mut VMOpaqueContext;
@@ -59,6 +69,8 @@ pub extern "C" fn grate_callback_trampoline(
 
     // Re-enter Wasmtime using the stored vmctx pointer
     let grate_ret = unsafe {
+        #[cfg(feature = "lind_perf")]
+        let _caller_scope = perf::enabled::TRAMPOLINE_CALLER_WITH.scope();
         Caller::with(vmctx_raw, |caller: Caller<'_, HostCtx>| {
             let Caller {
                 mut store,
@@ -66,6 +78,8 @@ pub extern "C" fn grate_callback_trampoline(
             } = caller;
 
             // Resolve the unified entry function once per call
+            #[cfg(feature = "lind_perf")]
+            let _get_entry_scope = perf::enabled::TRAMPOLINE_GET_PASS_FPTR_TO_WT.scope();
             let entry_func = instance
                 .host_state()
                 .downcast_ref::<Instance>()
@@ -73,6 +87,8 @@ pub extern "C" fn grate_callback_trampoline(
                 .get_export(&mut store, "pass_fptr_to_wt")
                 .and_then(|f| f.into_func())
                 .ok_or_else(|| anyhow!("missing export `pass_fptr_to_wt`"))?;
+            #[cfg(feature = "lind_perf")]
+            drop(_get_entry_scope);
 
             let typed_func = entry_func.typed::<(
                 u64,
@@ -92,7 +108,9 @@ pub extern "C" fn grate_callback_trampoline(
             ), i32>(&mut store)?;
 
             // Call the entry function with all arguments and in grate function pointer
-            typed_func.call(
+            #[cfg(feature = "lind_perf")]
+            let _call_scope = perf::enabled::TRAMPOLINE_TYPED_DISPATCH_CALL.scope();
+            let call_res = typed_func.call(
                 &mut store,
                 (
                     in_grate_fn_ptr_u64,
@@ -110,12 +128,17 @@ pub extern "C" fn grate_callback_trampoline(
                     arg6,
                     arg6cageid,
                 ),
-            )
+            );
+            #[cfg(feature = "lind_perf")]
+            drop(_call_scope);
+            call_res
         })
         .unwrap_or(threei_const::GRATE_ERR)
     };
     // Push the vmctx back to the global pool
     set_vmctx(cageid, vmctx_wrapper);
+    #[cfg(feature = "lind_perf")]
+    std::hint::black_box(&_trampoline_scope);
     grate_ret
 }
 

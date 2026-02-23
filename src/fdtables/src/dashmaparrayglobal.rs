@@ -3,6 +3,8 @@
 //      Static DashMap.  Let's see if having the FDTableEntries be a static
 //      array is any faster...
 
+#[cfg(feature = "lind_perf")]
+use crate::perf;
 use crate::threei;
 
 use dashmap::DashMap;
@@ -393,33 +395,42 @@ lazy_static! {
 
 #[doc = include_str!("../docs/close_virtualfd.md")]
 pub fn close_virtualfd(cageid:u64, virtfd:u64) -> Result<(),threei::RetVal> {
+    #[cfg(feature = "lind_perf")]
+    let _close_vfd_scope = perf::enabled::CLOSE_VIRTUALFD.scope();
 
-    // Below condition checks if the virtualfd is out of bounds and if yes it throws an error
-    // Note that this assumes that all virtualfd numbers returned < FD_PER_PROCESS_MAX 
-    if virtfd >= FD_PER_PROCESS_MAX {
-        return Err(threei::Errno::EBADFD as u64);
-    }
+    let ret = (|| {
+        // Below condition checks if the virtualfd is out of bounds and if yes it throws an error
+        // Note that this assumes that all virtualfd numbers returned < FD_PER_PROCESS_MAX
+        if virtfd >= FD_PER_PROCESS_MAX {
+            return Err(threei::Errno::EBADFD as u64);
+        }
 
-    assert!(FDTABLE.contains_key(&cageid),"Unknown cageid in fdtable access");
+        assert!(FDTABLE.contains_key(&cageid),"Unknown cageid in fdtable access");
 
-    // derefing this so I don't hold a lock and deadlock close handlers
-    let mut myfdrow = *FDTABLE.get_mut(&cageid).unwrap();
+        // derefing this so I don't hold a lock and deadlock close handlers
+        let mut myfdrow = *FDTABLE.get_mut(&cageid).unwrap();
 
 
-    if myfdrow[virtfd as usize].is_some() {
-        let entry = myfdrow[virtfd as usize];
+        if myfdrow[virtfd as usize].is_some() {
+            let entry = myfdrow[virtfd as usize];
 
-        // Zero out this entry before calling the close handler...
-        myfdrow[virtfd as usize] = None;
+            // Zero out this entry before calling the close handler...
+            myfdrow[virtfd as usize] = None;
 
-        // Re-insert the modified myfdrow since I've been modifying a copy
-        FDTABLE.insert(cageid, myfdrow.clone());
-        
-        // always _decrement last as it may call the user handler...
-        _decrement_fdcount(entry.unwrap());
-        return Ok(());
-    }
-    Err(threei::Errno::EBADFD as u64)
+            // Re-insert the modified myfdrow since I've been modifying a copy
+            FDTABLE.insert(cageid, myfdrow.clone());
+
+            // always _decrement last as it may call the user handler...
+            _decrement_fdcount(entry.unwrap());
+            return Ok(());
+        }
+        Err(threei::Errno::EBADFD as u64)
+    })();
+
+    #[cfg(feature = "lind_perf")]
+    std::hint::black_box(&_close_vfd_scope);
+
+    ret
 }
 
 

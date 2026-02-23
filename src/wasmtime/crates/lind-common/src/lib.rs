@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+pub mod perf;
+
 use anyhow::Result;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -53,63 +55,79 @@ pub fn add_to_linker<
               arg6: u64,
               arg6cageid: u64|
               -> i32 {
-            // TODO:
-            // 1. add a signal check here as Linux also has a signal check when transition from kernel to userspace
-            // However, Asyncify management in this function should be carefully rethinking if adding signal check here
-
-            // With Asyncify enabled, an unwind/rewind resumes Wasmtime execution by re-entering
-            // the original call site. This means the same hostcall/trampoline path can be
-            // executed multiple times while representing a *single* logical operation.
-            //
-            // `clone` is particularly sensitive here: during a logical `clone`, the lind
-            // trampoline can be re-entered multiple times (e.g., 3 times) after unwind/rewind.
-            // If we forward the syscall to RawPOSIX on every re-entry, we will perform the
-            // operation multiple times.
-            //
-            // In lind-boot we forward syscalls directly to RawPOSIX, so we replicate the state
-            // check here to early-return when we are on a rewind replay path.
-            if call_number as i32 == CLONE_SYSCALL {
-                if let Some(rewind_res) = wasmtime_lind_multi_process::catch_rewind(&mut caller) {
-                    return rewind_res;
-                }
-            }
-
-            // Some thread-related operations must be executed against a specific thread's
-            // VMContext (e.g., pthread_create/exit). Because syscalls may be interposed/routed
-            // through 3i functionality and the effective thread instance cannot be reliably derived
-            // from self/target cage IDs or per-argument cage IDs, we explicitly attach the *current*
-            // source thread id (tid) for selected syscalls. (Note: `self_cageid == target_cageid` means
-            // the syscall executes from cage)
-            //
-            // Concretely, for CLONE/EXEC we override arg2 with the current tid so that, when the call back
-            // to wasmtime, it can resolve the correct thread instance deterministically, independent of
-            // interposition or cross-cage routing.
-            let final_arg2 = if self_cageid == target_cageid
-                && matches!(call_number as i32, CLONE_SYSCALL | EXIT_SYSCALL)
-            {
-                wasmtime_lind_multi_process::current_tid(&mut caller) as u64
+            #[cfg(feature = "lind_perf")]
+            let _make_syscall_scope = if call_number >= 2001 && call_number <= 2003 {
+                Some(perf::enabled::ADD_TO_LINKER_MAKE_SYSCALL.scope())
             } else {
-                arg2
+                None
             };
 
-            make_syscall(
-                self_cageid,
-                call_number as u64,
-                call_name,
-                target_cageid,
-                arg1,
-                arg1cageid,
-                final_arg2,
-                arg2cageid,
-                arg3,
-                arg3cageid,
-                arg4,
-                arg4cageid,
-                arg5,
-                arg5cageid,
-                arg6,
-                arg6cageid,
-            )
+            let ret = (|| {
+                // TODO:
+                // 1. add a signal check here as Linux also has a signal check when transition from kernel to userspace
+                // However, Asyncify management in this function should be carefully rethinking if adding signal check here
+
+                // With Asyncify enabled, an unwind/rewind resumes Wasmtime execution by re-entering
+                // the original call site. This means the same hostcall/trampoline path can be
+                // executed multiple times while representing a *single* logical operation.
+                //
+                // `clone` is particularly sensitive here: during a logical `clone`, the lind
+                // trampoline can be re-entered multiple times (e.g., 3 times) after unwind/rewind.
+                // If we forward the syscall to RawPOSIX on every re-entry, we will perform the
+                // operation multiple times.
+                //
+                // In lind-boot we forward syscalls directly to RawPOSIX, so we replicate the state
+                // check here to early-return when we are on a rewind replay path.
+                if call_number as i32 == CLONE_SYSCALL {
+                    if let Some(rewind_res) =
+                        wasmtime_lind_multi_process::catch_rewind(&mut caller)
+                    {
+                        return rewind_res;
+                    }
+                }
+
+                // Some thread-related operations must be executed against a specific thread's
+                // VMContext (e.g., pthread_create/exit). Because syscalls may be interposed/routed
+                // through 3i functionality and the effective thread instance cannot be reliably derived
+                // from self/target cage IDs or per-argument cage IDs, we explicitly attach the *current*
+                // source thread id (tid) for selected syscalls. (Note: `self_cageid == target_cageid` means
+                // the syscall executes from cage)
+                //
+                // Concretely, for CLONE/EXEC we override arg2 with the current tid so that, when the call back
+                // to wasmtime, it can resolve the correct thread instance deterministically, independent of
+                // interposition or cross-cage routing.
+                let final_arg2 = if self_cageid == target_cageid
+                    && matches!(call_number as i32, CLONE_SYSCALL | EXIT_SYSCALL)
+                {
+                    wasmtime_lind_multi_process::current_tid(&mut caller) as u64
+                } else {
+                    arg2
+                };
+
+                make_syscall(
+                    self_cageid,
+                    call_number as u64,
+                    call_name,
+                    target_cageid,
+                    arg1,
+                    arg1cageid,
+                    final_arg2,
+                    arg2cageid,
+                    arg3,
+                    arg3cageid,
+                    arg4,
+                    arg4cageid,
+                    arg5,
+                    arg5cageid,
+                    arg6,
+                    arg6cageid,
+                )
+            })();
+
+            #[cfg(feature = "lind_perf")]
+            std::hint::black_box(&_make_syscall_scope);
+
+            ret
         },
     )?;
 

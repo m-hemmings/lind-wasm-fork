@@ -121,5 +121,11 @@
 #define REGISTER_HANDLER_SYSCALL 1001
 #define COPY_DATA_BETWEEN_CAGES_SYSCALL 1002
 
+/* Special syscalls used for benchmarking */
+
+#define LIBC_CALL	2001
+#define FDT_CALL	2002
+#define	GRT_CALL	2003
+
 #endif /* _LIND_SYSCALL_NUM_H */
  

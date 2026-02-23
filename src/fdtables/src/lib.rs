@@ -115,6 +115,10 @@
 // This includes the specific implementation of the algorithm chosen.
 include!("current_impl");
 
+/// Enable lind_perf related features for benchmarking.
+#[cfg(feature = "lind_perf")]
+pub mod perf;
+
 // This includes general constants and definitions for things that are
 // needed everywhere, like FDTableEntry.  I use the * import here to flatten
 // the namespace so folks importing this have the symbols directly imported.

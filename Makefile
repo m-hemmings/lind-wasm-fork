@@ -34,6 +34,12 @@ lind-boot: build-dir
 	cargo build --manifest-path src/lind-boot/Cargo.toml --release
 	cp src/lind-boot/target/release/lind-boot $(LINDBOOT_BIN)
 
+.PHONY: lind-boot-perf
+lind-boot-perf: build-dir
+	# Build lind-boot with low-overhead cycle counters enabled.
+	cargo build --manifest-path src/lind-boot/Cargo.toml --release --features lind_perf
+	cp src/lind-boot/target/release/lind-boot $(LINDBOOT_BIN)
+
 .PHONY: lindfs
 lindfs:
 	@for d in $(LINDFS_DIRS); do \

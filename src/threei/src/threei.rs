@@ -14,6 +14,7 @@ use crate::handler_table::{
     _check_cage_handler_exists, _get_handler, _rm_cage_from_handler, _rm_grate_from_handler,
     copy_handler_table_to_cage_impl, print_handler_table, register_handler_impl,
 };
+use crate::perf;
 use crate::threei_const;
 
 pub const EXIT_SYSCALL: u64 = 60; // exit syscall number. Public for tests.
@@ -201,40 +202,61 @@ fn _call_grate_func(
     arg6: u64,
     arg6_cageid: u64,
 ) -> Option<i32> {
-    let runtimeid = match get_cage_runtime(grateid) {
-        Some(r) => r,
-        None => panic!(
-            "[3i|_call_grate_func] grate runtime not found! grateid: {}",
-            grateid
-        ),
-    };
+    #[cfg(feature = "lind_perf")]
+    let _call_grate_scope = perf::enabled::CALL_GRATE_FUNC.scope();
 
-    let trampoline = match get_runtime_trampoline(runtimeid) {
-        Some(f) => f,
-        None => panic!(
-            "[3i|_call_grate_func] grate trampoline not found! runtimeid: {}",
-            runtimeid
-        ),
-    };
+    let ret = (|| {
+        let (_runtimeid, trampoline) = {
+            #[cfg(feature = "lind_perf")]
+            let _runtime_lookup_scope =
+                perf::enabled::CALL_GRATE_FUNC_GET_RUNTIME_TRAMPOLINE.scope();
 
-    let rc = (trampoline)(
-        in_grate_fn_ptr_u64,
-        grateid,
-        arg1,
-        arg1_cageid,
-        arg2,
-        arg2_cageid,
-        arg3,
-        arg3_cageid,
-        arg4,
-        arg4_cageid,
-        arg5,
-        arg5_cageid,
-        arg6,
-        arg6_cageid,
-    );
+            let runtimeid = match get_cage_runtime(grateid) {
+                Some(r) => r,
+                None => panic!(
+                    "[3i|_call_grate_func] grate runtime not found! grateid: {}",
+                    grateid
+                ),
+            };
 
-    Some(rc)
+            let trampoline = match get_runtime_trampoline(runtimeid) {
+                Some(f) => f,
+                None => panic!(
+                    "[3i|_call_grate_func] grate trampoline not found! runtimeid: {}",
+                    runtimeid
+                ),
+            };
+
+            #[cfg(feature = "lind_perf")]
+            std::hint::black_box(&_runtime_lookup_scope);
+
+            (runtimeid, trampoline)
+        };
+
+        let rc = (trampoline)(
+            in_grate_fn_ptr_u64,
+            grateid,
+            arg1,
+            arg1_cageid,
+            arg2,
+            arg2_cageid,
+            arg3,
+            arg3_cageid,
+            arg4,
+            arg4_cageid,
+            arg5,
+            arg5_cageid,
+            arg6,
+            arg6_cageid,
+        );
+
+        Some(rc)
+    })();
+
+    #[cfg(feature = "lind_perf")]
+    std::hint::black_box(&_call_grate_scope);
+
+    ret
 }
 
 /// EXITING_TABLE:
@@ -414,6 +436,56 @@ pub fn make_syscall(
     arg6: u64,
     arg6_cageid: u64,
 ) -> i32 {
+    #[cfg(feature = "lind_perf")]
+    let _make_syscall_scope = if syscall_num >= 2001 && syscall_num <= 2003 {
+        Some(perf::enabled::MAKE_SYSCALL.scope())
+    } else {
+        None
+    };
+
+    let ret = make_syscall_impl(
+        self_cageid,
+        syscall_num,
+        _syscall_name,
+        target_cageid,
+        arg1,
+        arg1_cageid,
+        arg2,
+        arg2_cageid,
+        arg3,
+        arg3_cageid,
+        arg4,
+        arg4_cageid,
+        arg5,
+        arg5_cageid,
+        arg6,
+        arg6_cageid,
+    );
+
+    #[cfg(feature = "lind_perf")]
+    std::hint::black_box(&_make_syscall_scope);
+
+    ret
+}
+
+pub fn make_syscall_impl(
+    self_cageid: u64, // is required to get the cage instance
+    syscall_num: u64,
+    _syscall_name: u64, // syscall name pointer in the calling Wasm instance
+    target_cageid: u64,
+    arg1: u64,
+    arg1_cageid: u64,
+    arg2: u64,
+    arg2_cageid: u64,
+    arg3: u64,
+    arg3_cageid: u64,
+    arg4: u64,
+    arg4_cageid: u64,
+    arg5: u64,
+    arg5_cageid: u64,
+    arg6: u64,
+    arg6_cageid: u64,
+) -> i32 {
     // Return error if the target cage/grate is exiting. We need to add this check beforehead, because make_syscall will also
     // contain cases that can directly redirect a syscall when self_cageid == target_id, which will bypass the handlertable check
     if EXITING_TABLE.contains(&target_cageid) && syscall_num != EXIT_SYSCALL {
@@ -469,6 +541,7 @@ pub fn make_syscall(
                     arg6_cageid,
                 );
             }
+
             // Grate case: call into the corresponding grate function
             // <targetcage, targetcallnum, in_grate_fn_ptr_u64, this_grate_id>
             // Theoretically, the complexity is O(1), shouldn't affect performance a lot
@@ -503,10 +576,10 @@ pub fn make_syscall(
     }
 
     panic!(
-        "[3i|make_syscall] syscall number {} not found in handler table for cage {}, targetcage {}!",
-        syscall_num,
-        self_cageid,
-        target_cageid,
+            "[3i|make_syscall] syscall number {} not found in handler table for cage {}, targetcage {}!",
+            syscall_num,
+            self_cageid,
+            target_cageid,
     );
 }
 

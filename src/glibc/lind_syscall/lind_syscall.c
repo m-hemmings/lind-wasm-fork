@@ -164,3 +164,35 @@ int copy_data_between_cages(uint64_t thiscage, uint64_t targetcage, uint64_t src
         0 /* translate_errno=0: we want to return the raw result without errno translation */
     );
 }
+
+int libc_syscall() {
+	return make_threei_call(
+		LIBC_CALL,
+		0,
+		__lind_cageid,
+		__lind_cageid,
+		0, __lind_cageid,
+		0, __lind_cageid,
+		0, __lind_cageid,
+		0, __lind_cageid,
+		0, __lind_cageid,
+		0, __lind_cageid,
+		1
+	);
+}
+
+int fdt_syscall() {
+	return make_threei_call(
+		FDT_CALL,
+		0,
+		__lind_cageid,
+		__lind_cageid,
+		-1, __lind_cageid,
+		0, __lind_cageid,
+		0, __lind_cageid,
+		0, __lind_cageid,
+		0, __lind_cageid,
+		0, __lind_cageid,
+		1
+	);
+}

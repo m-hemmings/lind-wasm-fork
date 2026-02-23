@@ -1,6 +1,10 @@
 #!/bin/bash
 
+# Requires lind-boot to be built with the `lind_perf` feature. 
+# Use `make lind-boot-perf` for this.
+
 set -euo pipefail
+
 
 # Check if we need to re-exec with sudo
 if [[ $EUID -ne 0 ]]; then
@@ -14,15 +18,15 @@ BENCH_ROOT="${REPO_ROOT}/tests/benchmarks"
 
 echo "Compiling Tests..."
 
-"${SCRIPT_DIR}/lind_compile" "${BENCH_ROOT}/libccall.c" &>/dev/null && mv "${BENCH_ROOT}/libccall.wasm" "${REPO_ROOT}/lindfs/"
-"${SCRIPT_DIR}/lind_compile" "${BENCH_ROOT}/fdtcall.c" &>/dev/null && mv "${BENCH_ROOT}/fdtcall.wasm" "${REPO_ROOT}/lindfs/"
-"${SCRIPT_DIR}/lind_compile" --compile-grate "${BENCH_ROOT}/gratecall.c" &>/dev/null && mv "${BENCH_ROOT}/gratecall.wasm" "${REPO_ROOT}/lindfs/"
+"${SCRIPT_DIR}/lind_compile" "${BENCH_ROOT}/libc_syscall.c" &>/dev/null && mv "${BENCH_ROOT}/libccall.wasm" "${REPO_ROOT}/lindfs/"
+"${SCRIPT_DIR}/lind_compile" "${BENCH_ROOT}/fdtables_syscall.c" &>/dev/null && mv "${BENCH_ROOT}/fdtcall.wasm" "${REPO_ROOT}/lindfs/"
+"${SCRIPT_DIR}/lind_compile" --compile-grate "${BENCH_ROOT}/grate_syscall.c" &>/dev/null && mv "${BENCH_ROOT}/gratecall.wasm" "${REPO_ROOT}/lindfs/"
 
 echo -en "\nLIBC Test\t"
-sudo lind-boot --perf libccall.wasm
+sudo lind-boot --perf libc_syscall.wasm
 
 echo -en "\nFDTABLE Test\t"
-sudo lind-boot --perf fdtcall.wasm
+sudo lind-boot --perf fdtables_syscall.wasm
 
 echo -en "\nGRATE Test\t"
-sudo lind-boot --perf gratecall.wasm libccall.wasm
+sudo lind-boot --perf grate_syscall.wasm libc_syscall.wasm

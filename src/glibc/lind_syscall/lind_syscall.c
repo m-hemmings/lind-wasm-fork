@@ -167,7 +167,7 @@ int copy_data_between_cages(uint64_t thiscage, uint64_t targetcage, uint64_t src
 
 int libc_syscall() {
 	return make_threei_call(
-		LIBC_CALL,
+		LIBC_SYSCALL,
 		0,
 		__lind_cageid,
 		__lind_cageid,
@@ -181,9 +181,9 @@ int libc_syscall() {
 	);
 }
 
-int fdt_syscall() {
+int fdtable_syscall() {
 	return make_threei_call(
-		FDT_CALL,
+		FDTABLE_SYSCALL,
 		0,
 		__lind_cageid,
 		__lind_cageid,

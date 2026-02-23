@@ -122,10 +122,8 @@
 #define COPY_DATA_BETWEEN_CAGES_SYSCALL 1002
 
 /* Special syscalls used for benchmarking */
-
-#define LIBC_CALL	2001
-#define FDT_CALL	2002
-#define	GRT_CALL	2003
+#define LIBC_SYSCALL 2001
+#define FDTABLE_SYSCALL 2002
 
 #endif /* _LIND_SYSCALL_NUM_H */
  

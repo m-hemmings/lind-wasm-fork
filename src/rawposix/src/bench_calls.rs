@@ -43,7 +43,7 @@ pub extern "C" fn libc_syscall(
     ret
 }
 
-pub extern "C" fn fdt_syscall(
+pub extern "C" fn fdtables_syscall(
     cageid: u64,
     vfd_arg: u64,
     vfd_cageid: u64,
@@ -59,7 +59,7 @@ pub extern "C" fn fdt_syscall(
     arg6_cageid: u64,
 ) -> i32 {
     #[cfg(feature = "lind_perf")]
-    let _fdt_scope = perf::enabled::FDT_SYSCALL.scope();
+    let _fdtables_scope = perf::enabled::FDTABLES_SYSCALL.scope();
 
     if !(sc_unusedarg(arg2, arg2_cageid)
         && sc_unusedarg(arg3, arg3_cageid)
@@ -69,7 +69,7 @@ pub extern "C" fn fdt_syscall(
     {
         panic!(
             "{}: unused arguments contain unexpected values -- security violation",
-            "fdt_syscall"
+            "fdtables_syscall"
         );
     }
 
@@ -89,5 +89,5 @@ pub extern "C" fn fdt_syscall(
     };
 
     #[cfg(feature = "lind_perf")]
-    std::hint::black_box(&_fdt_scope);
+    std::hint::black_box(&_fdtables_scope);
 }

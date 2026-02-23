@@ -26,7 +26,10 @@ use rawposix::init::{rawposix_shutdown, rawposix_start};
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let lindboot_cli = CliOptions::parse();
 
-    // lind-perf related benchmarking runs.
+    // Entry point for a lind_perf enabled build.
+    //
+    // When run with --perf flags, it performs the required setup and teardown, along with running
+    // the inputted wasm benchmark multiple times (once per counter).
     #[cfg(feature = "lind_perf")]
     {
         // Determine which timer to use. --perftsc => Rdtsc, --perf => Clock

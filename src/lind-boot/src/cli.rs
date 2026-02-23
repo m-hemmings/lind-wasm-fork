@@ -40,12 +40,12 @@ pub struct CliOptions {
     #[arg(long = "env", number_of_values = 1, value_name = "NAME[=VAL]", value_parser = parse_env_var)]
     pub vars: Vec<(String, Option<String>)>,
 
-    /// Run performance benchmark with CLOCK_GETTIME (requires `lind_perf` feature)
+    /// Run performance benchmark with CLOCK_GETTIME (requires the `lind_perf` feature)
     #[cfg(feature = "lind_perf")]
     #[arg(long)]
     pub perf: bool,
 
-    /// Run performance benchmarks with TSC (requires `lind_perf` feature)
+    /// Run performance benchmarks with TSC (requires the `lind_perf` feature)
     #[cfg(feature = "lind_perf")]
     #[arg(long)]
     pub perftsc: bool,

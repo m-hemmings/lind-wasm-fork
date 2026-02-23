@@ -56,6 +56,10 @@ pub fn add_to_linker<
               arg6: u64,
               arg6cageid: u64|
               -> i32 {
+            // Only activate this timer for a syscall that's explicitly defined as a benchmark-related
+            // call which should be defined as 2XXX.
+            //
+            // Currently, we only have 2 such calls, FDTABLES_SYSCALL and LIBC_SYSCALL
             #[cfg(feature = "lind_perf")]
             let _make_syscall_scope = if call_number > 2000 && call_number < 3000 {
                 Some(perf::enabled::ADD_TO_LINKER_MAKE_SYSCALL.scope())
@@ -63,6 +67,8 @@ pub fn add_to_linker<
                 None
             };
 
+            // Core implementation of this function was moved to an unnamed scope, so that the
+            // lind_perf timer is not dropped early.
             let ret = (|| {
                 // TODO:
                 // 1. add a signal check here as Linux also has a signal check when transition from kernel to userspace

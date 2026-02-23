@@ -436,6 +436,10 @@ pub fn make_syscall(
     arg6: u64,
     arg6_cageid: u64,
 ) -> i32 {
+    // Only activate this timer for a syscall that's explicitly defined as a benchmark-related
+    // call which should be defined as 2XXX.
+    //
+    // Currently, we only have 2 such calls, FDTABLES_SYSCALL and LIBC_SYSCALL
     #[cfg(feature = "lind_perf")]
     let _make_syscall_scope = if syscall_num > 2000 && syscall_num < 3000 {
         Some(perf::enabled::MAKE_SYSCALL.scope())
@@ -443,6 +447,8 @@ pub fn make_syscall(
         None
     };
 
+    // The core logic for make_syscall was moved to make_syscall_impl in order to ensure that
+    // lind_perf based scoped timer is not dropped early.
     let ret = make_syscall_impl(
         self_cageid,
         syscall_num,

@@ -165,6 +165,9 @@ int copy_data_between_cages(uint64_t thiscage, uint64_t targetcage, uint64_t src
     );
 }
 
+// ---------------------------------------------------------------------------------------------------------------------
+
+// Wrapper for LIBC_SYSCALL which is used to benchmark calls that end up calling the Linux kernel.
 int libc_syscall() {
 	return make_threei_call(
 		LIBC_SYSCALL,
@@ -181,13 +184,15 @@ int libc_syscall() {
 	);
 }
 
+// Wrapper for FDTABLES_SYSCALL which is used to benchmark calls that do not call the Linux kernel but instead
+// perform some internal processing.
 int fdtable_syscall() {
 	return make_threei_call(
 		FDTABLE_SYSCALL,
 		0,
 		__lind_cageid,
 		__lind_cageid,
-		-1, __lind_cageid,
+		-1, __lind_cageid, // This syscall mimics close(-1), so we enforced that the fd argument is set to -1.
 		0, __lind_cageid,
 		0, __lind_cageid,
 		0, __lind_cageid,

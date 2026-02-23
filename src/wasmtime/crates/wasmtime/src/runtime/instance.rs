@@ -13,7 +13,7 @@ use crate::{
 use alloc::sync::Arc;
 use cage::memory::{fork_vmmap, init_vmmap};
 use sysdefs::constants::PAGESIZE;
-use wasmtime_lind_utils::round_size;
+use wasmtime_lind_utils::round_up_size;
 use core::ptr::NonNull;
 use sysdefs::constants::fs_const::{
     MAP_ANONYMOUS, MAP_FIXED, MAP_PRIVATE, PAGESHIFT, PROT_READ, PROT_WRITE,
@@ -36,8 +36,8 @@ use super::Val;
 /// - `InstantiateChild`:
 ///     A child Wasm instance created via a fork-like operation.  
 ///     Arguments:
-///       - `parent_pid`: the parent instance's cageid  
-///       - `child_pid`: the newly created child instance's cageid
+///       - `parent_cageid`: the parent instance's cageid  
+///       - `child_cageid`: the newly created child instance's cageid
 ///
 /// - `InstantiateLib`:
 ///     A dynamically loaded library Wasm instance.  
@@ -45,7 +45,7 @@ use super::Val;
 ///     updated after `mmap` returns to reflect the actual linear memory base.
 pub enum InstantiateType {
     InstantiateFirst(u64),
-    InstantiateChild { parent_pid: u64, child_pid: u64 },
+    InstantiateChild { parent_cageid: u64, child_cageid: u64 },
     InstantiateLib(*mut u32),
 }
 
@@ -312,8 +312,8 @@ impl Instance {
         // let minimal_pages = (min_bytes + host_page_size - 1) / host_page_size; // ceil_div
         let minimal_pages = 2048 + 1; // stack size + guard page, reference to run.rs
         let module_meminfo = module.dylink_meminfo().unwrap();
-        let module_rounded_size = round_size(module_meminfo.memory_size, module_meminfo.memory_alignment);
-        let module_rounded_size = round_size(module_rounded_size, PAGESIZE);
+        let module_rounded_size = round_up_size(module_meminfo.memory_size, module_meminfo.memory_alignment);
+        let module_rounded_size = round_up_size(module_rounded_size, PAGESIZE);
 
         #[cfg(feature = "debug-dylink")]
         println!("[debug] module memory size round to {}", module_rounded_size);
@@ -374,8 +374,8 @@ impl Instance {
             }
             // InstantiateChild: this is the child wasm instance forked by parent
             InstantiateType::InstantiateChild {
-                parent_pid,
-                child_pid,
+                parent_cageid,
+                child_cageid,
             } => {
                 // if this is a child, we do not need to specifically set up the first memory region
                 // since this should be taken care of when we fork the entire memory region from parent
@@ -388,14 +388,14 @@ impl Instance {
                 drop(memory_iter);
                 let child_address = memory.data_ptr(&mut *store) as usize;
 
-                init_vmmap(child_pid, child_address, None);
-                fork_vmmap(parent_pid as u64, child_pid);
+                init_vmmap(child_cageid, child_address, None);
+                fork_vmmap(parent_cageid as u64, child_cageid);
             }
             InstantiateType::InstantiateLib(memory_base) => {
                 let dylink_meminfo = module.dylink_meminfo().unwrap();
 
-                let rounded_size = round_size(dylink_meminfo.memory_size, dylink_meminfo.memory_alignment);
-                let rounded_size = round_size(rounded_size, PAGESIZE);
+                let rounded_size = round_up_size(dylink_meminfo.memory_size, dylink_meminfo.memory_alignment);
+                let rounded_size = round_up_size(rounded_size, PAGESIZE);
                 #[cfg(feature = "debug-dylink")]
                 println!("[debug] library size round to {}", rounded_size);
 
@@ -451,7 +451,7 @@ impl Instance {
                     let _ = init.call(store.as_context_mut(), ()).unwrap();
                 }
             },
-            InstantiateType::InstantiateChild{parent_pid, child_pid} => {
+            InstantiateType::InstantiateChild{parent_cageid, child_cageid} => {
                 if let Some(start) = start {
                     instance.start_raw(store, start)?;
                 }

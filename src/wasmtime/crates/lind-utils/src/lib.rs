@@ -68,7 +68,7 @@ pub fn parse_env_var(env_var: &str) -> (String, Option<String>) {
 ///
 /// Commonly used for page-size or allocation alignment when managing
 /// linear memory or mmap-related regions.
-pub fn round_size(base: u32, align: u32) -> u32 {
+pub fn round_up_size(base: u32, align: u32) -> u32 {
     if align == 0 {
         return base;
     }

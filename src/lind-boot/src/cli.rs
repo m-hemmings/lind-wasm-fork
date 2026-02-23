@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use clap::*;
 
 fn parse_preloads(s: &str) -> Result<(String, PathBuf)> {

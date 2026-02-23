@@ -2,16 +2,17 @@ use crate::{cli::CliOptions, lind_wasmtime::host::HostCtx, lind_wasmtime::trampo
 use anyhow::{Context, Result, anyhow, bail};
 use cage::signal::{lind_signal_init, signal_may_trigger};
 use cfg_if::cfg_if;
-use sysdefs::constants::LINDFS_ROOT;
-use std::{ffi::c_void, sync::Mutex};
 use std::path::Path;
 use std::ptr::NonNull;
 use std::sync::Arc;
+use std::{ffi::c_void, sync::Mutex};
+use sysdefs::constants::LINDFS_ROOT;
 use sysdefs::constants::lind_platform_const::{RAWPOSIX_CAGEID, WASMTIME_CAGEID};
 use threei::threei_const;
 use wasi_common::sync::WasiCtxBuilder;
 use wasmtime::{
-    AsContextMut, Engine, Export, Func, InstantiateType, Linker, Module, Precompiled, Store, Val, ValType, WasmBacktraceDetails,
+    AsContextMut, Engine, Export, Func, InstantiateType, Linker, Module, Precompiled, Store, Val,
+    ValType, WasmBacktraceDetails,
 };
 use wasmtime_lind_3i::{VmCtxWrapper, init_vmctx_pool, rm_vmctx, set_vmctx, set_vmctx_thread};
 use wasmtime_lind_multi_process::{CAGE_START_ID, LindCtx, THREAD_START_ID, get_memory_base};
@@ -59,7 +60,7 @@ pub fn execute_wasmtime(lindboot_cli: CliOptions) -> anyhow::Result<Vec<Val>> {
     let lind_manager = Arc::new(LindCageManager::new(0));
     // new cage is created
     lind_manager.increment();
-    
+
     // create Global Offset Table for dynamic loading
     // #[cfg(feature = "dylink-support")]
     let mut lind_got = Arc::new(Mutex::new(LindGOT::new()));
@@ -92,7 +93,7 @@ pub fn execute_wasmtime(lindboot_cli: CliOptions) -> anyhow::Result<Vec<Val>> {
         // from its table import declaration.
         let mut main_module_table_size = None;
         let memory_size;
-        
+
         for import in module.imports() {
             if let wasmtime::ExternType::Table(table) = import.ty() {
                 main_module_table_size = Some(table.minimum());
@@ -107,13 +108,16 @@ pub fn execute_wasmtime(lindboot_cli: CliOptions) -> anyhow::Result<Vec<Val>> {
         let mut align = {
             // Enforce minimal alignment requirement for Lind:
             // at least 8 bytes (2^3).
-            if dylink_info.memory_alignment < 3 { 3 }
-            else { dylink_info.memory_alignment }
+            if dylink_info.memory_alignment < 3 {
+                3
+            } else {
+                dylink_info.memory_alignment
+            }
         };
         // round up memory size to align
         align = (1 << align) - 1;
         memory_size = (size + align) & !align;
-            
+
         let main_module_table_size = main_module_table_size.unwrap();
 
         // Allocate the main module's indirect function table with
@@ -128,20 +132,48 @@ pub fn execute_wasmtime(lindboot_cli: CliOptions) -> anyhow::Result<Vec<Val>> {
         let stack_low_num = 1024; // reserve first 1024 bytes for guard page
         let stack_high_num = stack_low_num + 8388608; // 8 MB of default stack size
         // #[cfg(feature = "debug-dylink")]
-        println!("[debug] main module stack pointer starts from {} to {}", stack_low_num, stack_high_num);
-        let stack_low = wasmtime::Global::new(&mut wstore, wasmtime::GlobalType::new(ValType::I32, wasmtime::Mutability::Var), Val::I32(stack_low_num)).unwrap();
-        let stack_high = wasmtime::Global::new(&mut wstore, wasmtime::GlobalType::new(ValType::I32, wasmtime::Mutability::Var), Val::I32(stack_high_num)).unwrap();
+        println!(
+            "[debug] main module stack pointer starts from {} to {}",
+            stack_low_num, stack_high_num
+        );
+        let stack_low = wasmtime::Global::new(
+            &mut wstore,
+            wasmtime::GlobalType::new(ValType::I32, wasmtime::Mutability::Var),
+            Val::I32(stack_low_num),
+        )
+        .unwrap();
+        let stack_high = wasmtime::Global::new(
+            &mut wstore,
+            wasmtime::GlobalType::new(ValType::I32, wasmtime::Mutability::Var),
+            Val::I32(stack_high_num),
+        )
+        .unwrap();
         linker.define(&mut wstore, "GOT.mem", "__stack_low", stack_low);
         linker.define(&mut wstore, "GOT.mem", "__stack_high", stack_high);
 
-        let stack_pointer = wasmtime::Global::new(&mut wstore, wasmtime::GlobalType::new(ValType::I32, wasmtime::Mutability::Var), Val::I32(stack_high_num)).unwrap();
+        let stack_pointer = wasmtime::Global::new(
+            &mut wstore,
+            wasmtime::GlobalType::new(ValType::I32, wasmtime::Mutability::Var),
+            Val::I32(stack_high_num),
+        )
+        .unwrap();
         linker.define(&mut wstore, "env", "__stack_pointer", stack_pointer);
 
         // For the main module:
         // - Table base starts at 0.
         // - Memory base begins after the stack space (plus padding).
-        let memory_base = wasmtime::Global::new(&mut wstore, wasmtime::GlobalType::new(ValType::I32, wasmtime::Mutability::Const), Val::I32(1024 + 8388608 + 1024)).unwrap();
-        let table_base = wasmtime::Global::new(&mut wstore, wasmtime::GlobalType::new(ValType::I32, wasmtime::Mutability::Const), Val::I32(0)).unwrap();
+        let memory_base = wasmtime::Global::new(
+            &mut wstore,
+            wasmtime::GlobalType::new(ValType::I32, wasmtime::Mutability::Const),
+            Val::I32(1024 + 8388608 + 1024),
+        )
+        .unwrap();
+        let table_base = wasmtime::Global::new(
+            &mut wstore,
+            wasmtime::GlobalType::new(ValType::I32, wasmtime::Mutability::Const),
+            Val::I32(0),
+        )
+        .unwrap();
         linker.define(&mut wstore, "env", "__memory_base", memory_base);
         linker.define(&mut wstore, "env", "__table_base", table_base);
 
@@ -161,19 +193,25 @@ pub fn execute_wasmtime(lindboot_cli: CliOptions) -> anyhow::Result<Vec<Val>> {
             let path = typemap::get_cstr(base + lib as u64).unwrap();
             println!("[debug] dlopen path \"{}\"", path);
 
-            load_library_module(&mut caller, cloned_linker.clone(), cloned_lind_got.clone(), path) as i32
+            load_library_module(
+                &mut caller,
+                cloned_linker.clone(),
+                cloned_lind_got.clone(),
+                path,
+            ) as i32
         };
 
         let cloned_lind_got = lind_got.clone();
-        let dlsym = move |mut caller: wasmtime::Caller<'_, HostCtx>, handle: i32, sym: i32| -> i32 {
-            let base = get_memory_base(&mut caller);
-            let symbol = typemap::get_cstr(base + sym as u64).unwrap();
-            println!("[debug] dlsym {}", symbol);
-            let lib_symbol = caller.get_library_symbols((handle - 1) as usize).unwrap();
-            let val = *lib_symbol.get(&String::from(symbol)).unwrap() as i32;
-            println!("[debug] dlsym resolves {} to {}", symbol, val);
-            val
-        };
+        let dlsym =
+            move |mut caller: wasmtime::Caller<'_, HostCtx>, handle: i32, sym: i32| -> i32 {
+                let base = get_memory_base(&mut caller);
+                let symbol = typemap::get_cstr(base + sym as u64).unwrap();
+                println!("[debug] dlsym {}", symbol);
+                let lib_symbol = caller.get_library_symbols((handle - 1) as usize).unwrap();
+                let val = *lib_symbol.get(&String::from(symbol)).unwrap() as i32;
+                println!("[debug] dlsym resolves {} to {}", symbol, val);
+                val
+            };
 
         let dlclose = move |mut caller: wasmtime::Caller<'_, HostCtx>, handle: i32| -> i32 {
             println!("[debug] dlclose handle {}", handle);
@@ -183,23 +221,11 @@ pub fn execute_wasmtime(lindboot_cli: CliOptions) -> anyhow::Result<Vec<Val>> {
 
         let mut linker = linker.lock().unwrap();
         {
-            linker.func_wrap(
-                "lind",
-                "dlopen",
-                dlopen,
-            ).unwrap();
+            linker.func_wrap("lind", "dlopen", dlopen).unwrap();
 
-            linker.func_wrap(
-                "lind",
-                "dlsym",
-                dlsym,
-            ).unwrap();
+            linker.func_wrap("lind", "dlsym", dlsym).unwrap();
 
-            linker.func_wrap(
-                "lind",
-                "dlclose",
-                dlclose,
-            ).unwrap();
+            linker.func_wrap("lind", "dlclose", dlclose).unwrap();
         }
     }
 
@@ -211,7 +237,6 @@ pub fn execute_wasmtime(lindboot_cli: CliOptions) -> anyhow::Result<Vec<Val>> {
         lindboot_cli.clone(),
         None,
     )?;
-
 
     // Load the preload wasm modules.
     let mut modules = Vec::new();
@@ -254,11 +279,18 @@ pub fn execute_wasmtime(lindboot_cli: CliOptions) -> anyhow::Result<Vec<Val>> {
         let table_start = table.size(&mut wstore) as i32;
 
         // #[cfg(feature = "debug-dylink")]
-        println!("[debug] library table_start: {}, grow: {}", table_start, dylink_info.table_size);
+        println!(
+            "[debug] library table_start: {}, grow: {}",
+            table_start, dylink_info.table_size
+        );
         // Grow the shared indirect function table by the amount requested by the
         // library (as recorded in its dylink section). New slots are initialized
         // to null funcref.
-        table.grow(&mut wstore, dylink_info.table_size, wasmtime::Ref::Func(None));
+        table.grow(
+            &mut wstore,
+            dylink_info.table_size,
+            wasmtime::Ref::Func(None),
+        );
 
         // Link the library instance into the main linker namespace.
         // The linker records the module under `name` and uses `table_start`
@@ -267,10 +299,16 @@ pub fn execute_wasmtime(lindboot_cli: CliOptions) -> anyhow::Result<Vec<Val>> {
         {
             println!("[debug] library {} instantiate", name);
             let mut guard = lind_got.lock().unwrap();
-            lib_linker.module(&mut wstore, &name, &module, &mut table, table_start, &*guard).context(format!(
-                "failed to process preload `{}`",
-                name,
-            ))?;
+            lib_linker
+                .module(
+                    &mut wstore,
+                    &name,
+                    &module,
+                    &mut table,
+                    table_start,
+                    &*guard,
+                )
+                .context(format!("failed to process preload `{}`", name,))?;
         }
     }
 
@@ -294,7 +332,7 @@ pub fn execute_wasmtime(lindboot_cli: CliOptions) -> anyhow::Result<Vec<Val>> {
             &module,
             CAGE_START_ID as u64,
             &args,
-            lind_got
+            lind_got,
         )
         .with_context(|| format!("failed to run main module"))
     });
@@ -361,8 +399,15 @@ pub fn execute_with_lind(
 
     // -- Run the module in the cage --
     let result = wasmtime_wasi::runtime::with_ambient_tokio_runtime(|| {
-        load_main_module(&mut wstore, &mut linker, &module, cageid as u64, &args, lind_got)
-            .with_context(|| format!("failed to run main module"))
+        load_main_module(
+            &mut wstore,
+            &mut linker,
+            &module,
+            cageid as u64,
+            &args,
+            lind_got,
+        )
+        .with_context(|| format!("failed to run main module"))
     });
 
     result
@@ -534,10 +579,12 @@ fn attach_api(
 
     let mut linker_guard = linker.lock().unwrap();
     // Setup WASI-thread
-    let _ =
-        wasmtime_wasi_threads::add_to_linker(&mut linker_guard, &wstore, &module, |s: &mut HostCtx| {
-            s.wasi_threads.as_ref().unwrap()
-        });
+    let _ = wasmtime_wasi_threads::add_to_linker(
+        &mut linker_guard,
+        &wstore,
+        &module,
+        |s: &mut HostCtx| s.wasi_threads.as_ref().unwrap(),
+    );
 
     println!("[debug] attach api wasi thread");
 
@@ -695,13 +742,13 @@ fn load_main_module(
         for export in instance.exports(&mut store) {
             let name = export.name().to_owned();
             match export.into_extern() {
-                // I don't think main module should update GOT functions? 
+                // I don't think main module should update GOT functions?
                 // Extern::Func(func) => {
                 //     funcs.push((name, func));
                 // },
                 wasmtime::Extern::Global(global) => {
                     globals.push((name, global));
-                },
+                }
                 _ => {}
             }
         }
@@ -769,7 +816,10 @@ fn load_library_module(
 
     let library_full_path = base_path.join(library_path);
     let library_full_path_str = library_full_path.to_str().unwrap();
-    println!("[debug] base_path: {:?}, library_full_path: {:?}", base_path, library_full_path);
+    println!(
+        "[debug] base_path: {:?}, library_full_path: {:?}",
+        base_path, library_full_path
+    );
 
     let lib_module = read_wasm_or_cwasm(&engine, Path::new(library_full_path_str)).unwrap();
 
@@ -777,8 +827,18 @@ fn load_library_module(
 
     let table_size = main_module.get_table_size();
     main_module.grow_table_lib(dylink_info.table_size, wasmtime::Ref::Func(None));
-    let table_base = wasmtime::Global::new(&mut *main_module, wasmtime::GlobalType::new(ValType::I32, wasmtime::Mutability::Const), Val::I32(table_size as i32)).unwrap();
-    let memory_base = wasmtime::Global::new(&mut *main_module, wasmtime::GlobalType::new(ValType::I32, wasmtime::Mutability::Const), Val::I32(0)).unwrap();
+    let table_base = wasmtime::Global::new(
+        &mut *main_module,
+        wasmtime::GlobalType::new(ValType::I32, wasmtime::Mutability::Const),
+        Val::I32(table_size as i32),
+    )
+    .unwrap();
+    let memory_base = wasmtime::Global::new(
+        &mut *main_module,
+        wasmtime::GlobalType::new(ValType::I32, wasmtime::Mutability::Const),
+        Val::I32(0),
+    )
+    .unwrap();
 
     let handle;
     {
@@ -790,10 +850,19 @@ fn load_library_module(
 
         {
             let mut guard = lind_got.lock().unwrap();
-            handle = linker.module_dyn(&mut main_module, library_full_path_str, &lib_module, table_size as i32, &*guard).context(format!(
-                "failed to process library `{}`",
-                library_full_path_str
-            )).unwrap();
+            handle = linker
+                .module_dyn(
+                    &mut main_module,
+                    library_full_path_str,
+                    &lib_module,
+                    table_size as i32,
+                    &*guard,
+                )
+                .context(format!(
+                    "failed to process library `{}`",
+                    library_full_path_str
+                ))
+                .unwrap();
         }
     }
     println!("[debug] dlopen: handle={}", handle);

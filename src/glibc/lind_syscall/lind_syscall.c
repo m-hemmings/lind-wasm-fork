@@ -192,7 +192,7 @@ int fdtable_syscall() {
 		0,
 		__lind_cageid,
 		__lind_cageid,
-		-1, __lind_cageid, // This syscall mimics close(-1), so we enforced that the fd argument is set to -1.
+		-1, __lind_cageid, // This syscall mimics close(-1), so we enforce that the fd argument is set to -1.
 		0, __lind_cageid,
 		0, __lind_cageid,
 		0, __lind_cageid,

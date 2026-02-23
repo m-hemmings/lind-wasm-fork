@@ -2,6 +2,7 @@ use crate::{cli::CliOptions, lind_wasmtime::host::HostCtx, lind_wasmtime::trampo
 use anyhow::{Context, Result, anyhow, bail};
 use cage::signal::{lind_signal_init, signal_may_trigger};
 use cfg_if::cfg_if;
+use wasmtime_lind_dylink::DynamicLoader;
 use std::path::Path;
 use std::ptr::NonNull;
 use std::sync::Arc;
@@ -49,6 +50,7 @@ use wasmtime_wasi_threads::WasiThreadsCtx;
 pub fn execute_wasmtime(lindboot_cli: CliOptions) -> anyhow::Result<Vec<Val>> {
     // -- Initialize the Wasmtime execution environment --
     let wasm_file_path = Path::new(lindboot_cli.wasm_file());
+    println!("[debug] wasm_file_path: {:?}", wasm_file_path);
     let args = lindboot_cli.args.clone();
     let wt_config = make_wasmtime_config(lindboot_cli.wasmtime_backtrace);
     let engine = Engine::new(&wt_config).context("failed to create execution engine")?;
@@ -184,51 +186,6 @@ pub fn execute_wasmtime(lindboot_cli: CliOptions) -> anyhow::Result<Vec<Val>> {
         drop(got_guard);
     }
 
-    {
-        let cloned_linker = linker.clone();
-        let cloned_lind_got = lind_got.clone();
-
-        let dlopen = move |mut caller: wasmtime::Caller<'_, HostCtx>, lib: i32| -> i32 {
-            let base = get_memory_base(&mut caller);
-            let path = typemap::get_cstr(base + lib as u64).unwrap();
-            println!("[debug] dlopen path \"{}\"", path);
-
-            load_library_module(
-                &mut caller,
-                cloned_linker.clone(),
-                cloned_lind_got.clone(),
-                path,
-            ) as i32
-        };
-
-        let cloned_lind_got = lind_got.clone();
-        let dlsym =
-            move |mut caller: wasmtime::Caller<'_, HostCtx>, handle: i32, sym: i32| -> i32 {
-                let base = get_memory_base(&mut caller);
-                let symbol = typemap::get_cstr(base + sym as u64).unwrap();
-                println!("[debug] dlsym {}", symbol);
-                let lib_symbol = caller.get_library_symbols((handle - 1) as usize).unwrap();
-                let val = *lib_symbol.get(&String::from(symbol)).unwrap() as i32;
-                println!("[debug] dlsym resolves {} to {}", symbol, val);
-                val
-            };
-
-        let dlclose = move |mut caller: wasmtime::Caller<'_, HostCtx>, handle: i32| -> i32 {
-            println!("[debug] dlclose handle {}", handle);
-            // to do: implement dlclose
-            0
-        };
-
-        let mut linker = linker.lock().unwrap();
-        {
-            linker.func_wrap("lind", "dlopen", dlopen).unwrap();
-
-            linker.func_wrap("lind", "dlsym", dlsym).unwrap();
-
-            linker.func_wrap("lind", "dlclose", dlclose).unwrap();
-        }
-    }
-
     attach_api(
         &mut wstore,
         &mut linker,
@@ -236,6 +193,7 @@ pub fn execute_wasmtime(lindboot_cli: CliOptions) -> anyhow::Result<Vec<Val>> {
         lind_manager.clone(),
         lindboot_cli.clone(),
         None,
+        lind_got.clone()
     )?;
 
     // Load the preload wasm modules.
@@ -332,7 +290,7 @@ pub fn execute_wasmtime(lindboot_cli: CliOptions) -> anyhow::Result<Vec<Val>> {
             &module,
             CAGE_START_ID as u64,
             &args,
-            lind_got,
+            lind_got.clone(),
         )
         .with_context(|| format!("failed to run main module"))
     });
@@ -395,6 +353,7 @@ pub fn execute_with_lind(
         lind_manager.clone(),
         lind_boot.clone(),
         Some(cageid as i32),
+        lind_got.clone()
     )?;
 
     // -- Run the module in the cage --
@@ -526,6 +485,7 @@ fn attach_api(
     lind_manager: Arc<LindCageManager>,
     lindboot_cli: CliOptions,
     cageid: Option<i32>,
+    got: Arc<Mutex<LindGOT>>,
 ) -> Result<()> {
     println!("[debug] attach api");
     // Setup WASI-p1
@@ -588,8 +548,20 @@ fn attach_api(
 
     println!("[debug] attach api wasi thread");
 
+    let cloned_linker = linker.clone();
+    let cloned_got = got.clone();
+    
+    let dynamic_loader: DynamicLoader<HostCtx> = Arc::new(move |caller, library_name| {
+        load_library_module(
+            caller,
+            cloned_linker.clone(),
+            cloned_got.clone(),
+            library_name,
+        )
+    });
+
     // attach Lind common APIs to the linker
-    let _ = wasmtime_lind_common::add_to_linker::<HostCtx, _>(&mut linker_guard)?;
+    let _ = wasmtime_lind_common::add_to_linker::<HostCtx, _>(&mut linker_guard, dynamic_loader)?;
 
     println!("[debug] attach api lind common");
 
@@ -619,10 +591,6 @@ fn attach_api(
 
     println!("[debug] attach api lind multi-process");
 
-    // let _ = wstore.data_mut().wasi_threads = Some(Arc::new(WasiThreadsCtx::new(
-    //     module.clone(),
-    //     Arc::new(linker.clone()),
-    // )?));)
     drop(linker_guard);
 
     println!("[debug] attach api done");
@@ -783,6 +751,9 @@ fn load_main_module(
         set_vmctx(cageid, backup_vmctx_wrapper);
     }
 
+    // must drop linker before jump into wasm
+    drop(linker_guard);
+
     let ret = match func {
         Some(func) => invoke_func(store, func, &args),
         None => Ok(vec![]),
@@ -804,24 +775,15 @@ fn load_library_module(
     mut lind_got: Arc<Mutex<LindGOT>>,
     library_name: &str,
 ) -> i32 {
-    println!("[debug] load_library_module");
-
     // use the same engine for the library
     let engine = main_module.engine();
     // let mut store = main_module.as_context_mut();
 
-    let base_path = Path::new(LINDFS_ROOT);
     let library_path = Path::new(library_name);
     let library_path = library_path.strip_prefix("/").unwrap_or(library_path);
 
-    let library_full_path = base_path.join(library_path);
-    let library_full_path_str = library_full_path.to_str().unwrap();
-    println!(
-        "[debug] base_path: {:?}, library_full_path: {:?}",
-        base_path, library_full_path
-    );
-
-    let lib_module = read_wasm_or_cwasm(&engine, Path::new(library_full_path_str)).unwrap();
+    println!("[debug] library_path: {:?}", library_path);
+    let lib_module = read_wasm_or_cwasm(&engine, Path::new(library_path)).unwrap();
 
     let dylink_info = lib_module.dylink_meminfo().unwrap();
 
@@ -849,6 +811,7 @@ fn load_library_module(
         }
 
         {
+            println!("[debug] before module_dyn");
             let mut guard = lind_got.lock().unwrap();
             handle = linker
                 .module_dyn(
@@ -863,6 +826,7 @@ fn load_library_module(
                     library_full_path_str
                 ))
                 .unwrap();
+            println!("[debug] after module_dyn");
         }
     }
     println!("[debug] dlopen: handle={}", handle);

@@ -199,9 +199,7 @@ pub fn execute_wasmtime(lindboot_cli: CliOptions) -> anyhow::Result<Vec<Val>> {
     // Load the preload wasm modules.
     let mut modules = Vec::new();
     modules.push((String::new(), module.clone()));
-    println!("[debug]: preload list: {:?}", lindboot_cli.preloads);
     for (name, path) in lindboot_cli.preloads.iter() {
-        println!("[debug]: preload {}", name);
         // Read the wasm module binary either as `*.wat` or a raw binary
         let module = read_wasm_or_cwasm(&engine, path)?;
         modules.push((name.clone(), module.clone()));
@@ -236,7 +234,7 @@ pub fn execute_wasmtime(lindboot_cli: CliOptions) -> anyhow::Result<Vec<Val>> {
         // within the global indirect function table.
         let table_start = table.size(&mut wstore) as i32;
 
-        // #[cfg(feature = "debug-dylink")]
+        #[cfg(feature = "debug-dylink")]
         println!(
             "[debug] library table_start: {}, grow: {}",
             table_start, dylink_info.table_size
@@ -271,6 +269,8 @@ pub fn execute_wasmtime(lindboot_cli: CliOptions) -> anyhow::Result<Vec<Val>> {
     }
 
     {
+        // Resolve any remaining unknown imports to trap stubs so the library can
+        // instantiate even when it has optional/unused imports.
         let mut linker = linker.lock().unwrap();
         linker.define_unknown_imports_as_traps(&module);
     }
@@ -769,69 +769,70 @@ fn load_main_module(
     ret
 }
 
+/// Dynamically load and instantiate a library module into a running main module.
+///
+/// This function implements Lind's runtime dynamic loading path (subroutine of `dlopen`).
+/// It loads the library using the same engine as the main module, reserves space in
+/// the shared indirect function table, installs GOT placeholders for symbol resolution,
+/// and then instantiates the library in the context of the running instance.
+///
+/// The library's functions are appended to the shared table, and relocations are
+/// resolved relative to the current table size and shared memory base.
+///
+/// Returns an integer handle representing the identifier of the loaded library instance,
+/// which is used by dlsym symbol lookup
 fn load_library_module(
     mut main_module: &mut wasmtime::Caller<HostCtx>,
     mut main_linker: Arc<Mutex<Linker<HostCtx>>>,
     mut lind_got: Arc<Mutex<LindGOT>>,
     library_name: &str,
 ) -> i32 {
-    // use the same engine for the library
+    // Use the same wasmtime engine as the main module so that
+    // the library shares compilation configuration and runtime state.
     let engine = main_module.engine();
-    // let mut store = main_module.as_context_mut();
 
     let library_path = Path::new(library_name);
-    let library_path = library_path.strip_prefix("/").unwrap_or(library_path);
 
-    println!("[debug] library_path: {:?}", library_path);
+    // Load and compile the library module (either wasm or cwasm format).
     let lib_module = read_wasm_or_cwasm(&engine, Path::new(library_path)).unwrap();
 
+    // Extract dylink metadata from the library.
+    // This includes table and memory requirements declared by the toolchain.
     let dylink_info = lib_module.dylink_meminfo().unwrap();
 
+    // Record the current size of the shared indirect function table.
+    // The library's functions will be appended starting from this index.
     let table_size = main_module.get_table_size();
     main_module.grow_table_lib(dylink_info.table_size, wasmtime::Ref::Func(None));
-    let table_base = wasmtime::Global::new(
-        &mut *main_module,
-        wasmtime::GlobalType::new(ValType::I32, wasmtime::Mutability::Const),
-        Val::I32(table_size as i32),
-    )
-    .unwrap();
-    let memory_base = wasmtime::Global::new(
-        &mut *main_module,
-        wasmtime::GlobalType::new(ValType::I32, wasmtime::Mutability::Const),
-        Val::I32(0),
-    )
-    .unwrap();
 
-    let handle;
-    {
-        let mut linker = main_linker.lock().unwrap();
-        {
-            let mut guard = lind_got.lock().unwrap();
-            linker.define_GOT_dispatcher(&mut main_module, &lib_module, &mut *guard);
-        }
+    // Grow the shared function table to reserve space for this library's
+    // function entries, as declared in its dylink section.
+    let mut linker = main_linker.lock().unwrap();
+    let mut got_guard = lind_got.lock().unwrap();
 
-        {
-            println!("[debug] before module_dyn");
-            let mut guard = lind_got.lock().unwrap();
-            handle = linker
-                .module_dyn(
-                    &mut main_module,
-                    library_full_path_str,
-                    &lib_module,
-                    table_size as i32,
-                    &*guard,
-                )
-                .context(format!(
-                    "failed to process library `{}`",
-                    library_full_path_str
-                ))
-                .unwrap();
-            println!("[debug] after module_dyn");
-        }
-    }
-    println!("[debug] dlopen: handle={}", handle);
+    // Install placeholder GOT globals for this library's imports.
+    // These placeholders allow instantiation to succeed before
+    // relocations are applied and symbols are fully resolved.
+    linker.define_GOT_dispatcher(&mut main_module, &lib_module, &mut *got_guard);
 
-    handle as i32
+    // Instantiate the library module in the context of the running main module.
+    // `table_size` is passed as the base index into the shared table so that
+    // the library's function references can be relocated correctly.
+    //
+    // The GOT is used to patch symbol addresses/indices after instantiation.
+    linker
+        .module_with_caller(
+            &mut main_module,
+            library_name,
+            &lib_module,
+            table_size as i32,
+            &*got_guard,
+        )
+        .context(format!(
+            "failed to process library `{}`",
+            library_name
+        ))
+        .unwrap() as i32
 }
 
 /// AOT-compile a `.wasm` file to a `.cwasm` artifact on disk.

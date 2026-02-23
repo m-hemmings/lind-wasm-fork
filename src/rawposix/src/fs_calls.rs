@@ -2,7 +2,6 @@ use cage::{
     get_cage, get_shm_length, is_mmap_error, new_shm_segment, round_up_page, shmat_helper,
     shmdt_helper, MemoryBackingType, VmmapOps, HEAP_ENTRY_INDEX, SHM_METADATA,
 };
-use crate::perf;
 use dashmap::mapref::entry::Entry::{Occupied, Vacant};
 use fdtables;
 use libc::c_void;
@@ -208,9 +207,6 @@ pub extern "C" fn close_syscall(
     arg6: u64,
     arg6_cageid: u64,
 ) -> i32 {
-    #[cfg(feature = "lind_perf")]
-    let _close_scope = perf::enabled::CLOSE_SYSCALL.scope();
-
     if !(sc_unusedarg(arg2, arg2_cageid)
         && sc_unusedarg(arg3, arg3_cageid)
         && sc_unusedarg(arg4, arg4_cageid)
@@ -224,7 +220,9 @@ pub extern "C" fn close_syscall(
     }
 
     match fdtables::close_virtualfd(cageid, vfd_arg) {
-        Ok(()) => { return 0; },
+        Ok(()) => {
+            return 0;
+        }
         Err(e) => {
             if e == Errno::EBADFD as u64 {
                 return syscall_error(Errno::EBADF, "close", "Bad File Descriptor");
@@ -235,9 +233,6 @@ pub extern "C" fn close_syscall(
             }
         }
     };
-
-    #[cfg(feature = "lind_perf")]
-    std::hint::black_box(&_close_scope);
 }
 
 /// Reference to Linux: https://man7.org/linux/man-pages/man2/futex.2.html

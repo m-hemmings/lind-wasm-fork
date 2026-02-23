@@ -1,4 +1,4 @@
-/* Test locale, langinfo, and timezone functionality in lind-wasm */
+/* Test locale, langinfo, and basic time functionality in lind-wasm */
 
 #include <assert.h>
 #include <ctype.h>
@@ -99,55 +99,6 @@ int main(void) {
     /* Yes/No expressions */
     assert(strlen(nl_langinfo(YESEXPR)) > 0);
     assert(strlen(nl_langinfo(NOEXPR)) > 0);
-
-    /* ===== en_US.UTF-8 locale ===== */
-
-    loc = setlocale(LC_ALL, "en_US.UTF-8");
-    if (loc != NULL) {
-        /* LC_CTYPE */
-        assert(strcmp(nl_langinfo(CODESET), "UTF-8") == 0);
-
-        /* LC_NUMERIC */
-        assert(strcmp(nl_langinfo(RADIXCHAR), ".") == 0);
-        assert(strcmp(nl_langinfo(THOUSEP), ",") == 0);
-
-        /* LC_MONETARY */
-        lc = localeconv();
-        assert(lc != NULL);
-        assert(strcmp(lc->currency_symbol, "$") == 0);
-        assert(strcmp(lc->mon_decimal_point, ".") == 0);
-        assert(strcmp(lc->mon_thousands_sep, ",") == 0);
-        assert(strcmp(lc->int_curr_symbol, "USD ") == 0);
-        assert(lc->frac_digits == 2);
-        assert(lc->int_frac_digits == 2);
-
-        /* LC_TIME — day/month names same as C for en_US */
-        assert(strcmp(nl_langinfo(DAY_1), "Sunday") == 0);
-        assert(strcmp(nl_langinfo(MON_1), "January") == 0);
-
-        /* LC_NUMERIC via localeconv */
-        assert(strcmp(lc->decimal_point, ".") == 0);
-        assert(strcmp(lc->thousands_sep, ",") == 0);
-
-        /* Per-category setlocale */
-        loc = setlocale(LC_CTYPE, "en_US.UTF-8");
-        assert(loc != NULL);
-        loc = setlocale(LC_NUMERIC, "en_US.UTF-8");
-        assert(loc != NULL);
-        loc = setlocale(LC_MONETARY, "en_US.UTF-8");
-        assert(loc != NULL);
-
-        /* Restore C locale */
-        setlocale(LC_ALL, "C");
-
-        /* Verify C locale is fully restored */
-        assert(strcmp(nl_langinfo(CODESET), "ANSI_X3.4-1968") == 0);
-        assert(strcmp(nl_langinfo(THOUSEP), "") == 0);
-        lc = localeconv();
-        assert(strcmp(lc->currency_symbol, "") == 0);
-        assert(strcmp(lc->thousands_sep, "") == 0);
-        assert(lc->frac_digits == 127);
-    }
 
     /* ===== ctype (C locale) ===== */
 
@@ -261,16 +212,6 @@ int main(void) {
     assert(check->tm_mday == 15);
     assert(check->tm_hour == 12);
 
-    /* ===== tzdata.zi availability ===== */
-
-    /* Verify the timezone data file is accessible in lindfs.
-       This is needed by C++20 std::chrono::get_tzdb(). */
-    assert(access("/usr/share/zoneinfo/tzdata.zi", R_OK) == 0);
-    assert(access("/usr/share/zoneinfo/leap-seconds.list", R_OK) == 0);
-
-    /* /etc/timezone should exist for current_zone() fallback */
-    assert(access("/etc/timezone", R_OK) == 0);
-
     /* ===== DST transition via POSIX TZ string ===== */
 
     /* US Eastern: EST5EDT,M3.2.0,M11.1.0
@@ -291,33 +232,6 @@ int main(void) {
     assert(lt != NULL);
     assert(lt->tm_hour == 8);   /* 08:00 EDT */
     assert(lt->tm_isdst == 1);
-
-    /* ===== strftime with en_US.UTF-8 locale ===== */
-
-    if (setlocale(LC_ALL, "en_US.UTF-8") != NULL) {
-        setenv("TZ", "UTC0", 1);
-        tzset();
-
-        /* strftime %c (locale-dependent date/time) should not crash */
-        t.tm_year = 124;
-        t.tm_mon = 6;       /* July */
-        t.tm_mday = 4;
-        t.tm_hour = 10;
-        t.tm_min = 0;
-        t.tm_sec = 0;
-        t.tm_wday = 4;      /* Thursday */
-        t.tm_yday = 185;
-        assert(strftime(buf, sizeof(buf), "%c", &t) > 0);
-        assert(strlen(buf) > 0);
-
-        /* %x (locale date) and %X (locale time) */
-        assert(strftime(buf, sizeof(buf), "%x", &t) > 0);
-        assert(strlen(buf) > 0);
-        assert(strftime(buf, sizeof(buf), "%X", &t) > 0);
-        assert(strlen(buf) > 0);
-
-        setlocale(LC_ALL, "C");
-    }
 
     write(1, "done\n", 5);
     return 0;

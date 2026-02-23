@@ -102,6 +102,12 @@ pub fn _get_handler(self_cageid: u64, syscall_num: u64, target_cageid: u64) -> O
         )
     });
 
+    // When target_cageid == self_cageid, this means the call is supposed to be handled
+    // within the same cage or this is a cage call, so we first check if a RAWPOSIX handler exists.
+    // More details on scenarios and the reason we use this check in the comments
+    // in `register_handler_impl`.
+    // If it does, we return it. If not, we fallback to any handler registered for this
+    // (self_cageid, syscall_num) pair,
     if target_cageid == self_cageid {
         // Prefer exact RAWPOSIX handler if registered
         if let Some(addr) = target_map.get(&lind_platform_const::RAWPOSIX_CAGEID) {
@@ -169,7 +175,7 @@ pub fn _rm_cage_from_handler(cageid: u64) {
 /// This function supports three distinct behaviors according to the value of
 /// `handlefunccage` and `register_flag`.
 ///
-/// Case 1: Remove ALL handlers for (srccage, targetcallnum)
+/// Case 1: Remove handler for (srccage, targetcallnum)
 ///
 /// If `handlefunccage` equals `THREEI_DEREGISTER`, the entire syscall entry
 /// under `(srccage, targetcallnum)` is removed. This means that all registered
@@ -177,16 +183,11 @@ pub fn _rm_cage_from_handler(cageid: u64) {
 /// performs structural cleanup so that empty intermediate maps are deleted in
 /// order to keep the table compact and avoid stale containers.
 ///
-/// Case 2: Remove ONLY a specific handler entry
+/// NOTE: If the caller intends to remove only a specific target cage for this syscall,
+/// they must be sure they also register the desired handler for the target cage(s).
+/// Otherwise, the upcoming syscall from the cage will cause a panic due to missing handler.
 ///
-/// If `register_flag` equals zero, only the specific entry
-/// `(srccage, targetcallnum, handlefunccage)` is removed. In this mode,
-/// deregistration is granular and does not affect other target cages registered
-/// for the same syscall. After removing the specific entry, the function checks
-/// whether the inner maps have become empty and removes them accordingly,
-/// maintaining structural consistency of the nested hash map.
-///
-/// Case 3: Register or overwrite handler
+/// Case 2: Register or overwrite handler
 ///
 /// In all other cases, the function performs registration or overwrite. The
 /// `(srccage, targetcallnum)` containers are created if they do not already
@@ -226,13 +227,12 @@ pub fn _rm_cage_from_handler(cageid: u64) {
 pub fn register_handler_impl(
     srccage: u64,
     targetcallnum: u64,
-    register_flag: u64, // 0: deregister, otherwise: register
     handlefunccage: u64,
     in_grate_fn_ptr_u64: u64,
 ) -> i32 {
     let mut table = HANDLERTABLE.lock().expect("HANDLERTABLE mutex poisoned");
 
-    // Case 1: Remove entire syscall mapping
+    // Case 1: Remove syscall mapping for a given (srccage, targetcallnum)
     // If `handlefunccage == THREEI_DEREGISTER`, remove the entire callnum entry
     // for the given (targetcage, targetcallnum).
     if handlefunccage == threei_const::THREEI_DEREGISTER {
@@ -246,27 +246,7 @@ pub fn register_handler_impl(
         return 0;
     }
 
-    // Case 2: Remove specific handler entry
-    if register_flag == 0 {
-        if let Some(call_map) = table.get_mut(&srccage) {
-            if let Some(target_map) = call_map.get_mut(&targetcallnum) {
-                target_map.remove(&handlefunccage);
-                // cleanup empty callnum map
-                if target_map.is_empty() {
-                    call_map.remove(&targetcallnum);
-                }
-            }
-
-            // cleanup empty srccage
-            if call_map.is_empty() {
-                table.remove(&srccage);
-            }
-        }
-
-        return 0;
-    }
-
-    // Case 3: Register or overwrite handler
+    // Case 2: Register or overwrite handler
     let call_map = table.entry(srccage).or_insert_with(HashMap::new);
     let target_map = call_map.entry(targetcallnum).or_insert_with(HashMap::new);
 

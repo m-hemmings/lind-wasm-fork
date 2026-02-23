@@ -7,8 +7,9 @@ pub mod bench_calls;
 pub mod fs_calls;
 pub mod init;
 pub mod net_calls;
-pub mod perf;
 pub mod sys_calls;
 pub mod syscall_table;
-
 pub use syscall_table::*;
+
+#[cfg(feature = "lind_perf")]
+pub mod perf;

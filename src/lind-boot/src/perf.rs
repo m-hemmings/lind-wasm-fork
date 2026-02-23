@@ -1,6 +1,6 @@
 #[cfg(feature = "lind_perf")]
 pub mod enabled {
-    use lind_perf::{enable_name, reset_all, set_timer, Counter, TimerKind};
+    use lind_perf::{Counter, TimerKind, enable_name, reset_all, set_timer};
 
     pub static READ_WASM_OR_CWASM: Counter = Counter::new("lind_boot::read_wasm_or_cwasm");
     pub static LOAD_MAIN_MODULE: Counter = Counter::new("lind_boot::load_main_module");

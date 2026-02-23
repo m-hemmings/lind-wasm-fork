@@ -437,7 +437,7 @@ pub fn make_syscall(
     arg6_cageid: u64,
 ) -> i32 {
     #[cfg(feature = "lind_perf")]
-    let _make_syscall_scope = if syscall_num >= 2001 && syscall_num <= 2003 {
+    let _make_syscall_scope = if syscall_num > 2000 {
         Some(perf::enabled::MAKE_SYSCALL.scope())
     } else {
         None

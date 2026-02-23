@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+#[cfg(feature = "lind_perf")]
 pub mod perf;
 
 use anyhow::Result;
@@ -56,7 +57,7 @@ pub fn add_to_linker<
               arg6cageid: u64|
               -> i32 {
             #[cfg(feature = "lind_perf")]
-            let _make_syscall_scope = if call_number >= 2001 && call_number <= 2003 {
+            let _make_syscall_scope = if call_number > 2000 {
                 Some(perf::enabled::ADD_TO_LINKER_MAKE_SYSCALL.scope())
             } else {
                 None
@@ -79,8 +80,7 @@ pub fn add_to_linker<
                 // In lind-boot we forward syscalls directly to RawPOSIX, so we replicate the state
                 // check here to early-return when we are on a rewind replay path.
                 if call_number as i32 == CLONE_SYSCALL {
-                    if let Some(rewind_res) =
-                        wasmtime_lind_multi_process::catch_rewind(&mut caller)
+                    if let Some(rewind_res) = wasmtime_lind_multi_process::catch_rewind(&mut caller)
                     {
                         return rewind_res;
                     }

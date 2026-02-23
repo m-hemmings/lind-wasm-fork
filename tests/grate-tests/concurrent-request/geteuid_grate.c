@@ -5,6 +5,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <assert.h>
 
 // Dispatcher function
 int pass_fptr_to_wt(uint64_t fn_ptr_uint, uint64_t cageid, uint64_t arg1,
@@ -49,13 +50,12 @@ int main(int argc, char *argv[]) {
       int cageid = getpid();
       // Set the geteuid (syscallnum=107) of this cage to call this grate
       // function geteuid_grate (func index=0) Syntax of register_handler:
-      // <targetcage, targetcallnum, handlefunc_flag (deregister(0) or register
-      // (non-zero), this_grate_id, fn_ptr_u64)>
+      // <targetcage, targetcallnum, this_grate_id, fn_ptr_u64)>
       uint64_t fn_ptr_addr = (uint64_t)(uintptr_t)&geteuid_grate;
       printf("[Grate|geteuid] Registering geteuid handler for cage %d in "
               "grate %d with fn ptr addr: %llu\n",
               cageid, grateid, fn_ptr_addr);
-      int ret = register_handler(cageid, 107, 1, grateid, fn_ptr_addr);
+      int ret = register_handler(cageid, 107, grateid, fn_ptr_addr);
 
       if (execv(argv[i], &argv[i]) == -1) {
         perror("execv failed");
@@ -69,14 +69,11 @@ int main(int argc, char *argv[]) {
   while (wait(&status) > 0) {
     if (status != 0) {
       fprintf(stderr, "[Grate|geteuid] FAIL: child exited with status %d\n", status);
-      failed = 1;
+      assert(0);
+      return EXIT_FAILURE;
     }
   }
 
-  if (failed) {
-    fprintf(stderr, "[Grate|geteuid] FAIL\n");
-    return EXIT_FAILURE;
-  }
   printf("[Grate|geteuid] PASS\n");
   return 0;
 }

@@ -38,25 +38,25 @@ int main() {
     errno = 0;
     ret = mkdir(NULL, 0755);
     assert(ret == -1 && "mkdir(NULL) should return -1");
-    printf("Test 5 PASS: mkdir(NULL) returned -1\n");
+    printf("Test 4 PASS: mkdir(NULL) returned -1\n");
 
-    /* Test 6: unlink(NULL) — should return -1, not crash */
+    /* Test 5: unlink(NULL) — should return -1, not crash */
     errno = 0;
     ret = unlink(NULL);
     assert(ret == -1 && "unlink(NULL) should return -1");
-    printf("Test 6 PASS: unlink(NULL) returned -1\n");
+    printf("Test 5 PASS: unlink(NULL) returned -1\n");
 
-    /* Test 7: link(NULL, NULL) — should return -1, not crash */
+    /* Test 6: link(NULL, NULL) — should return -1, not crash */
     errno = 0;
     ret = link(NULL, NULL);
     assert(ret == -1 && "link(NULL, NULL) should return -1");
-    printf("Test 7 PASS: link(NULL, NULL) returned -1\n");
+    printf("Test 6 PASS: link(NULL, NULL) returned -1\n");
 
-    /* Test 8: rename(NULL, NULL) — should return -1, not crash */
+    /* Test 7: rename(NULL, NULL) — should return -1, not crash */
     errno = 0;
     ret = rename(NULL, NULL);
     assert(ret == -1 && "rename(NULL, NULL) should return -1");
-    printf("Test 8 PASS: rename(NULL, NULL) returned -1\n");
+    printf("Test 7 PASS: rename(NULL, NULL) returned -1\n");
 
     printf("All path_conversion safety tests completed without crash.\n");
     fflush(stdout);

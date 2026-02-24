@@ -9,6 +9,7 @@ use crate::{
 use alloc::sync::Arc;
 use cage::DashMap;
 use wasmtime_lind_utils::LindGOT;
+use wasmtime_lind_utils::symbol_table::SymbolMap;
 use core::fmt;
 #[cfg(feature = "async")]
 use core::future::Future;
@@ -1047,6 +1048,7 @@ impl<T> Linker<T> {
         module: &Module,
         table_base: i32,
         got: &LindGOT,
+        mut symbol_map: SymbolMap,
     ) -> Result<u64>
     where
         T: 'static,
@@ -1121,14 +1123,11 @@ impl<T> Linker<T> {
                     }
                 }
 
-                // create a symbol mapping for this library, which is used by symbol lookup
-                let mut symbol_mapping = DashMap::<String, u32>::new();
-
                 for (name, func) in funcs {
                     // TODO: probably needs to skip if the symbol is internal symbols (e.g. epoch symbols)
                     let index = store.grow_table_lib(1, crate::Ref::Func(Some(func)));
                     // append the symbol into mappings
-                    symbol_mapping.insert(name.clone(), index);
+                    symbol_map.add(name.clone(), index);
                     // update GOT entry
                     if got.update_entry_if_unresolved(&name, index) {
                         #[cfg(feature = "debug-dylink")]
@@ -1141,7 +1140,7 @@ impl<T> Linker<T> {
                     // relocate the variable
                     let val = val.i32().unwrap() as u32 + memory_base;
                     // append the symbol into mappings
-                    symbol_mapping.insert(name.clone(), val);
+                    symbol_map.add(name.clone(), val);
                     // update GOT entry
                     if got.update_entry_if_unresolved(&name, val) {
                         #[cfg(feature = "debug-dylink")]
@@ -1150,7 +1149,7 @@ impl<T> Linker<T> {
                 }
 
                 // append the symbol mapping of this library into the global lookup table
-                let handle = store.push_library_symbols(&symbol_mapping).unwrap() as u64;
+                let handler = store.push_library_symbols(symbol_map).unwrap() as u64;
 
                 // If the module has a start function, run it (Wasm start semantics).
                 if let Some(start) = module.compiled_module().module().start_func {
@@ -1173,7 +1172,7 @@ impl<T> Linker<T> {
 
                 self.instance(store, module_name, instance);
 
-                Ok(handle)
+                Ok(handler)
             }
         }
     }

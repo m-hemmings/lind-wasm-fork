@@ -186,8 +186,8 @@ pub fn add_to_linker<
     linker.func_wrap(
         "lind",
         "dlopen",
-        move |mut caller: wasmtime::Caller<'_, T>, lib: i32| -> i32 {
-            wasmtime_lind_dylink::dlopen_call(&mut caller, lib, cloned_dynamic_loader.clone())
+        move |mut caller: wasmtime::Caller<'_, T>, file: i32, mode: i32| -> i32 {
+            wasmtime_lind_dylink::dlopen_call(&mut caller, file, mode, cloned_dynamic_loader.clone())
         },
     )?;
 
@@ -195,8 +195,8 @@ pub fn add_to_linker<
     linker.func_wrap(
         "lind",
         "dlsym",
-        move |mut caller: wasmtime::Caller<'_, T>, handle: i32, sym: i32| -> i32 {
-            wasmtime_lind_dylink::dlsym_call(&mut caller, handle, sym)
+        move |mut caller: wasmtime::Caller<'_, T>, handle: i32, name: i32| -> i32 {
+            wasmtime_lind_dylink::dlsym_call(&mut caller, handle, name)
         },
     )?;
 

@@ -5,6 +5,7 @@ use std::sync::{Condvar, Mutex, atomic::{AtomicU32, Ordering}};
 use dashmap::DashMap;
 
 pub mod lind_syscall_numbers;
+pub mod symbol_table;
 
 // used to manage global active cage count. Used to determine when wasmtime can exit
 // (i.e. only after all the cages exited, we can exit the process)

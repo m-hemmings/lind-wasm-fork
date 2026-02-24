@@ -3,11 +3,13 @@ use anyhow::{Context, Result, anyhow, bail};
 use cage::signal::{lind_signal_init, signal_may_trigger};
 use cfg_if::cfg_if;
 use wasmtime_lind_dylink::DynamicLoader;
+use wasmtime_lind_utils::symbol_table::SymbolMap;
+use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 use std::ptr::NonNull;
 use std::sync::Arc;
 use std::{ffi::c_void, sync::Mutex};
-use sysdefs::constants::LINDFS_ROOT;
+use sysdefs::constants::{DEFAULT_STACKSIZE, GUARD_SIZE, LINDFS_ROOT};
 use sysdefs::constants::lind_platform_const::{RAWPOSIX_CAGEID, WASMTIME_CAGEID};
 use threei::threei_const;
 use wasi_common::sync::WasiCtxBuilder;
@@ -165,7 +167,7 @@ pub fn execute_wasmtime(lindboot_cli: CliOptions) -> anyhow::Result<Vec<Val>> {
         let memory_base = wasmtime::Global::new(
             &mut wstore,
             wasmtime::GlobalType::new(ValType::I32, wasmtime::Mutability::Const),
-            Val::I32(1024 + 8388608 + 1024),
+            Val::I32((GUARD_SIZE + DEFAULT_STACKSIZE + GUARD_SIZE) as i32),
         )
         .unwrap();
         let table_base = wasmtime::Global::new(
@@ -548,12 +550,13 @@ fn attach_api(
     let cloned_linker = linker.clone();
     let cloned_got = got.clone();
     
-    let dynamic_loader: DynamicLoader<HostCtx> = Arc::new(move |caller, library_name| {
+    let dynamic_loader: DynamicLoader<HostCtx> = Arc::new(move |caller, library_name, mode| {
         load_library_module(
             caller,
             cloned_linker.clone(),
             cloned_got.clone(),
             library_name,
+            mode,
         )
     });
 
@@ -779,12 +782,24 @@ fn load_library_module(
     mut main_linker: Arc<Mutex<Linker<HostCtx>>>,
     mut lind_got: Arc<Mutex<LindGOT>>,
     library_name: &str,
+    dlopen_mode: i32,
 ) -> i32 {
     // Use the same wasmtime engine as the main module so that
     // the library shares compilation configuration and runtime state.
     let engine = main_module.engine();
 
     let library_path = Path::new(library_name);
+
+    // retrieve inode of the file as the unique identifier of the library
+    let metadata = match std::fs::metadata(library_path) {
+        Ok(data) => data,
+        Err(_) => return 0, // return NULL (0) to indicate error
+    };
+    let inode = metadata.ino();
+
+    if let Some(handler) = main_module.check_library_loaded(inode) {
+        return handler;
+    }
 
     // Load and compile the library module (either wasm or cwasm format).
     let lib_module = read_wasm_or_cwasm(&engine, Path::new(library_path)).unwrap();
@@ -808,6 +823,8 @@ fn load_library_module(
     // relocations are applied and symbols are fully resolved.
     linker.define_GOT_dispatcher(&mut main_module, &lib_module, &mut *got_guard);
 
+    let mut symbol_map = SymbolMap::new(dlopen_mode, inode);
+
     // Instantiate the library module in the context of the running main module.
     // `table_size` is passed as the base index into the shared table so that
     // the library's function references can be relocated correctly.
@@ -820,6 +837,7 @@ fn load_library_module(
             &lib_module,
             table_size as i32,
             &*got_guard,
+            symbol_map,
         )
         .context(format!(
             "failed to process library `{}`",

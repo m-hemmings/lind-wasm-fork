@@ -13,6 +13,7 @@ use crate::{
 };
 use alloc::sync::Arc;
 use cage::DashMap;
+use wasmtime_lind_utils::symbol_table::SymbolMap;
 use core::ffi::c_void;
 use core::future::Future;
 use core::mem::{self, MaybeUninit};
@@ -2140,13 +2141,28 @@ impl<T> Caller<'_, T> {
     }
 
     /// append library's symbols into lookup table
-    pub fn push_library_symbols(&mut self, symbols: &DashMap<String, u32>) -> Result<usize> {
+    pub fn push_library_symbols(&mut self, symbols: SymbolMap) -> Result<usize> {
         self.store.push_library_symbols(symbols)
     }
 
-    /// retrieve the symbol table of a specific library
-    pub fn get_library_symbols(&mut self, index: usize) -> Option<&DashMap<String, u32>> {
-        self.store.get_library_symbols(index)
+    /// find library symbol from local scope
+    pub fn find_library_symbol_from_local(&mut self, handler: i32, name: &str) -> Option<u32> {
+        self.store.find_library_symbol_from_local(handler, name)
+    }
+
+    /// find library symbol from global scope
+    pub fn find_library_symbol_from_global(&mut self, name: &str) -> Option<u32> {
+        self.store.find_library_symbol_from_global(name)
+    }
+
+    /// detach the library
+    pub fn detach_library(&mut self, handler: i32) {
+        self.store.detach_library(handler);
+    }
+
+    /// check if the library is already loaded
+    pub fn check_library_loaded(&self, inode: u64) -> Option<i32> {
+        self.store.check_library_loaded(inode)
     }
 
     pub fn get_asyncify_start_unwind(&mut self) -> Result<TypedFunc<i32, ()>, ()> {

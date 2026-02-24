@@ -82,3 +82,8 @@ pub const WASMTIME_CAGEID: u64 = 888888;
 ///   the call through its internal control-layer logic rather than
 ///   forwarding it to RawPOSIX or Wasmtime.
 pub const THREEI_CAGEID: u64 = 999999;
+
+/// Default stack size assigned to each cage
+pub const DEFAULT_STACKSIZE: u32 = 8388608; // 8 MB
+/// Size of guard pages
+pub const GUARD_SIZE: u32 = 1024; // 1 KB

@@ -94,6 +94,7 @@ use crate::{module::ModuleRegistry, Engine, Module, Trap, Val, ValRaw};
 use crate::{Global, Instance, Memory, RootScope, Table, Uninhabited};
 use alloc::sync::Arc;
 use cage::DashMap;
+use wasmtime_lind_utils::symbol_table::{SymbolMap, SymbolTable};
 use core::cell::UnsafeCell;
 use core::fmt;
 use core::future::Future;
@@ -347,7 +348,7 @@ pub struct StoreOpaque {
     // stack bottom
     stack_base: u64,
     // libraries symbol mapping
-    library_symbols: Vec<DashMap<String, u32>>,
+    library_symbols: SymbolTable,
 
     // used by setjmp/longjmp
     // a mapping of raw unwind data hash to unwind data
@@ -552,7 +553,7 @@ impl<T> Store<T> {
                 asyncify_state: super::AsyncifyState::Normal,
                 signal_asyncify_data: Vec::new(),
                 signal_asyncify_counter: 0,
-                library_symbols: vec![],
+                library_symbols: SymbolTable::new(),
                 #[cfg(feature = "component-model")]
                 num_component_instances: 0,
                 signal_handler: None,
@@ -665,7 +666,7 @@ impl<T> Store<T> {
             asyncify_state: super::AsyncifyState::Normal,
             signal_asyncify_data: Vec::new(),
             signal_asyncify_counter: 0,
-            library_symbols: vec![],
+            library_symbols: SymbolTable::new(),
             #[cfg(feature = "component-model")]
             num_component_instances: 0,
             signal_handler: None,
@@ -1435,14 +1436,29 @@ impl<'a, T> StoreContextMut<'a, T> {
     }
 
     // push new library instance
-    pub fn push_library_symbols(&mut self, symbols: &DashMap<String, u32>) -> Result<usize> {
-        self.0.library_symbols.push(symbols.clone());
-        Ok(self.0.library_symbols.len())
+    pub fn push_library_symbols(&mut self, symbol_map: SymbolMap) -> Result<usize> {
+        self.0.library_symbols.add(symbol_map);
+        Ok(self.0.library_symbols.count())
     }
 
-    // get library symbol
-    pub fn get_library_symbols(&mut self, index: usize) -> Option<&DashMap<String, u32>> {
-        self.0.library_symbols.get(index)
+    // find library symbol from local scope
+    pub fn find_library_symbol_from_local(&self, handler: i32, name: &str) -> Option<u32> {
+        self.0.library_symbols.find_symbol_from_handler(handler, name)
+    }
+
+    // find library symbol from global scope
+    pub fn find_library_symbol_from_global(&self, name: &str) -> Option<u32> {
+        self.0.library_symbols.find_symbol_from_global_scope(name)
+    }
+
+    // detach the library
+    pub fn detach_library(&mut self, handler: i32) {
+        self.0.library_symbols.delete_by_handler(handler);
+    }
+
+    /// check if the library is already loaded
+    pub fn check_library_loaded(&self, inode: u64) -> Option<i32> {
+        self.0.library_symbols.check_library_loaded(inode)
     }
 
     /// get stack top

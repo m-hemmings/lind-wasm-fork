@@ -70,9 +70,9 @@ pub fn register_rawposix_syscall(self_cageid: u64) -> i32 {
             self_cageid,           // cage to modify: current cageid
             sysno,                 // target callnum
             RUNTIME_TYPE_WASMTIME, // runtime id
-            1,                     // register
             RAWPOSIX_CAGEID,       // handler function is in the RawPOSIX
             impl_fn_ptr,
+            0,
             0,
             0,
             0,
@@ -121,9 +121,9 @@ pub fn register_threei_syscall(self_cageid: u64) -> i32 {
         self_cageid,   // cage to modify: current cageid
         REGISTER_HANDLER_SYSCALL,
         RUNTIME_TYPE_WASMTIME, // runtime id
-        1,                     // register
         THREEI_CAGEID,         // handler function is in the 3i
         fp_register,
+        0,
         0,
         0,
         0,
@@ -140,7 +140,6 @@ pub fn register_threei_syscall(self_cageid: u64) -> i32 {
         self_cageid,   // cage to modify: current cageid
         COPY_DATA_BETWEEN_CAGES_SYSCALL,
         RUNTIME_TYPE_WASMTIME, // runtime id
-        1,                     // register
         THREEI_CAGEID,         // handler function is in the 3i
         fp_copy_data,
         0,
@@ -162,6 +161,7 @@ pub fn register_threei_syscall(self_cageid: u64) -> i32 {
         1,                     // register
         THREEI_CAGEID,         // handler function is in the 3i
         fp_copy_handler_table,
+        0,
         0,
         0,
         0,

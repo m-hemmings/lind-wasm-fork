@@ -111,7 +111,11 @@ pub fn get_cstr<'a>(arg: u64) -> Result<&'a str, i32> {
 ///
 /// ## Returns:
 /// A `CString` representing the absolute path in the host perspective (kernel perspective).
-pub fn sc_convert_path_to_host(path_arg: u64, path_arg_cageid: u64, cageid: u64) -> Result<CString, i32> {
+pub fn sc_convert_path_to_host(
+    path_arg: u64,
+    path_arg_cageid: u64,
+    cageid: u64,
+) -> Result<CString, i32> {
     #[cfg(feature = "secure")]
     {
         if !validate_cageid(path_arg_cageid, cageid) {

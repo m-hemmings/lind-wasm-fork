@@ -73,28 +73,34 @@ In practice, grates are composed using two patterns: stacking and clamping.
 
 ## Stacking
 
-Stacking is the most common form of grate composition. Grates are arranged in a linear chain, and system calls flow through them sequentially. This is analogous to how output flows through a Unix pipeline from one process’s stdout to another process’s stdin. In a Unix pipeline, a program may log or observe the input, modify it, filter it, or block it entirely before passing it along. Changing the order of commands changes the overall behavior.
+Stacking is the most common form of grate composition. Grates are arranged in a linear chain, and system calls flow through them sequentially. This is analogous to how output flows through a Unix pipeline from one process's stdout to another process's stdin. In a Unix pipeline, a program may log or observe the input, modify it, filter it, or block it entirely before passing it along. Changing the order of commands changes the overall behavior.
 
 Similarly, a grate may log or observe a system call and forward it (for example, like `strace`), modify it before forwarding (such as a file encryption grate), block it and return an error (similar to `seccomp`), or replace it with different system calls (for example, implementing a network filesystem). Each grate acts independently, and the overall behavior emerges from how the grates are composed.
 
+For example:
+
+```
+lind strace-grate -- clang hello.c -o hello
+```
+
+Here, `clang` executes as an application cage. When it issues system calls, they flow first through the strace grate, which logs each call and forwards it onward. The call then continues to RawPOSIX, which executes it against the host kernel. The strace grate observes but does not modify or block the call.
+
 ## Clamping
 
-Clamping is used when an ancestor grate needs structural control over how a descendant handles system calls.
-
-Often this is used to divide a namespace, but it is more general than that. Clamping allows an ancestor to ensure that certain checks, routing decisions, or transformations occur before a descendant’s handler executes.
+Clamping is used when an ancestor grate needs structural control over how a descendant handles system calls. Clamping allows an ancestor to ensure that certain checks, routing decisions, or transformations occur before a descendant's handler executes. Often this is used to divide a namespace, but it is more general than that.
 
 For example:
 
-- A filesystem namespace grate may route `/repo` to an in-memory filesystem grate while routing `/out` to the host filesystem.
-- A networking namespace grate may examine the destination of `send` and route traffic for certain IP and port combinations to different networking grates.
-- A validation grate may enforce argument checks before allowing a downstream service grate to execute.
+```
+lind namespace-grate --clamp imfs-grate --path /tmp -- python script.py
+```
 
-In these cases, the application still invokes the same system call, such as `write`.
+Here, the namespace grate controls filesystem routing for the python cage. Paths under `/tmp` are routed to the IMFS grate, which implements an in-memory filesystem, while other paths continue through normal routing toward RawPOSIX.
 
-However, the ancestor grate may register additional internal syscall numbers. For example, a namespace grate may allow the normal `write` syscall number to continue routing toward RawPOSIX or a grate stacked below it, while registering a new internal syscall number such as `write_imfs` for an in-memory filesystem grate.
+Clamping is made possible by interposing on `register_handler`. Because `register_handler` is itself dispatched through 3i, it can be intercepted like any other call. When the IMFS grate attempts to register a handler for a system call such as `write` on the python cage, the namespace grate intercepts that registration. Instead of allowing IMFS to install its handler directly, the namespace grate installs itself as the handler for `write` on the python cage. The namespace grate then registers the IMFS handler under a new internal syscall number, such as `write_imfs`.
 
-When `write` is invoked by a child cage, the ancestor grate examines the arguments and decides how to route the call. It may issue a new 3i call using the original `write` number to continue normal routing, or issue a call using the internal `write_imfs` number to direct the operation to the in-memory filesystem grate.
+At call time, this means system calls issued by the python cage are always routed through the namespace grate first. When python invokes `write`, the call is routed to the namespace grate, which examines the arguments and decides how to route the call. If the path falls under `/tmp`, the namespace grate issues a new 3i call using the internal `write_imfs` number, directing the operation to the IMFS grate. If the path falls elsewhere, the namespace grate issues a 3i call using the original `write` number, allowing the call to continue through normal routing toward RawPOSIX.
 
-Clamping is made possible by interposing on `register_handler`. When a descendant grate attempts to install a handler for a child cage, the ancestor intercepts that registration and substitutes its own handler instead.
+As a result, the call path for a write to `/tmp` is: python issues `write` → namespace grate examines the path and issues `write_imfs` → IMFS grate handles the operation in memory. For a write outside `/tmp`: python issues `write` → namespace grate examines the path and reissues `write` → RawPOSIX executes the call against the host kernel.
 
-As a result, system calls issued by the child are always routed through the ancestor first. The ancestor may perform checks, modify arguments, or make routing decisions before issuing a new 3i call to the appropriate downstream grate or to RawPOSIX, which executes the system call against the host kernel.
+Clamping is not a special primitive. It emerges naturally from the fact that `register_handler` is a 3i-dispatched operation that can be interposed on. The ancestor interposes on handler registration to guarantee that it remains in the routing path, giving it the ability to perform checks, modify arguments, or make routing decisions before any downstream grate executes.

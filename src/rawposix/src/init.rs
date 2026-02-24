@@ -141,7 +141,7 @@ pub fn register_threei_syscall(self_cageid: u64) -> i32 {
         COPY_DATA_BETWEEN_CAGES_SYSCALL,
         RUNTIME_TYPE_WASMTIME, // runtime id
         THREEI_CAGEID,         // handler function is in the 3i
-        fp_copy_handler_table,
+        fp_copy_data,
         0,
         0,
         0,

@@ -115,7 +115,7 @@ The global `VMCTX_QUEUES` structure primarily manages execution contexts for the
 
 Importantly, table slots are never removed from the global pool. Instead, the *slot contents (the queue)* of each slot may be inserted or removed over time. When a cage terminates, its corresponding queue slot remains present, but its slot content is cleared and set to `None`.
 
-This design ensures that each table index always directly corresponds to a `cage_id`, eliminating the need for dynamic index management or lookup structures. As a result, `cage_id` can be used as a stable, constant-time index into the pool, reducing lookup overhead and avoiding additional search or indirection costs.
+This design ensures that each table index always directly corresponds to a `cage_id`, eliminating the need for dynamic index management or lookup structures. While a single additional lookup may appear negligible, context resolution lies on the hot path of every grate call. Since cross-cage invocation requires resolving the target execution context on each request, even small per-call overheads accumulate under high request rates.
 
 ```rust
 static VMCTX_QUEUES: OnceLock<Vec<Mutex<VecDeque<VmCtxWrapper>>>>;

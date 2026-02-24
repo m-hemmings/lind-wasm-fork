@@ -583,5 +583,12 @@ fn make_wasmtime_config(backtrace: bool) -> wasmtime::Config {
 
     wt_config.wasm_backtrace_details(details);
 
+    // Enable compilation cache — compiled .wasm artifacts are stored on disk
+    // so subsequent runs skip compilation. Best-effort: if config loading
+    // fails (e.g. no home dir), caching is simply disabled.
+    if let Err(e) = wt_config.cache_config_load_default() {
+        eprintln!("[lind-boot] warning: failed to enable wasm cache: {e}");
+    }
+
     wt_config
 }

@@ -9,5 +9,5 @@ long long gettimens() {
 }
 
 inline void emit_result(char *test, int param, long long average, int loops) {
-	printf("%s\t%d\t%d\n%lld\n", test, param, loops, average);
+	printf("%s\t%d\t%d\t%lld\n", test, param, loops, average);
 }

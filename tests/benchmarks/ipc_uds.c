@@ -8,7 +8,7 @@
 #include <sys/wait.h>
 #include <sys/socket.h>
 
-#define LOOP_COUNT 100000
+#define LOOP_COUNT(size) ((size) > 4096 ? 1000 : 100000)
 
 void uds_dgram(int msg_size) {
 	int sv[2];
@@ -16,6 +16,8 @@ void uds_dgram(int msg_size) {
 		perror("socketpair");
 		exit(1);
 	}
+
+	int loops = LOOP_COUNT(msg_size);
 
 	pid_t pid = fork();
 
@@ -28,7 +30,7 @@ void uds_dgram(int msg_size) {
 	if (pid == 0) {
 		close(sv[0]);
 		char buf[msg_size];
-		for (int i = 0; i < LOOP_COUNT; i++) {
+		for (int i = 0; i < loops; i++) {
 			ssize_t n = recv(sv[1], buf, msg_size, 0);
 			if (n <= 0) {
 				fprintf(stderr, "Received 0 bytes\n");
@@ -42,18 +44,24 @@ void uds_dgram(int msg_size) {
 
 	// Parent
 	close(sv[1]);
-	char buf[msg_size];
+	// char buf[msg_size];
+	char *buf = malloc(msg_size);
+	if (buf == NULL) {
+		exit(1);
+	}
 	memset(buf, 0x42, msg_size);
 
 	long long start = gettimens();
-	for (int i = 0; i < LOOP_COUNT; i++) {
+	for (int i = 0; i < loops; i++) {
 		send(sv[0], buf, msg_size, 0);
 		recv(sv[0], buf, msg_size, 0);
 	}
 	long long end = gettimens();
 
-	emit_result("UDS (SOCK_DGRAM)", msg_size, (end - start) / LOOP_COUNT,
-		    LOOP_COUNT);
+	free(buf);
+
+	emit_result("Unix Domain Socket (DGRAM) - RTT", msg_size,
+		    (end - start) / loops, loops);
 }
 
 void uds_stream(int msg_size) {
@@ -63,6 +71,7 @@ void uds_stream(int msg_size) {
 		exit(1);
 	}
 
+	int loops = LOOP_COUNT(msg_size);
 	pid_t pid = fork();
 
 	if (pid < 0) {
@@ -73,8 +82,12 @@ void uds_stream(int msg_size) {
 	// Child
 	if (pid == 0) {
 		close(sv[0]);
-		char buf[msg_size];
-		for (int i = 0; i < LOOP_COUNT; i++) {
+		// char buf[msg_size];
+		char *buf = malloc(msg_size);
+		if (buf == NULL) {
+			exit(1);
+		}
+		for (int i = 0; i < loops; i++) {
 			ssize_t n = recv(sv[1], buf, msg_size, 0);
 			if (n <= 0) {
 				fprintf(stderr, "Received 0 bytes\n");
@@ -83,31 +96,37 @@ void uds_stream(int msg_size) {
 			send(sv[1], buf, n, 0);
 		}
 		close(sv[1]);
+		free(buf);
 		_exit(0);
 	}
 
 	// Parent
 	close(sv[1]);
-	char buf[msg_size];
+	// char buf[msg_size];
+	char *buf = malloc(msg_size);
+	if (buf == NULL) {
+		exit(0);
+	}
 	memset(buf, 0x42, msg_size);
 
 	long long start = gettimens();
-	for (int i = 0; i < LOOP_COUNT; i++) {
+	for (int i = 0; i < loops; i++) {
 		send(sv[0], buf, msg_size, 0);
 		recv(sv[0], buf, msg_size, 0);
 	}
 	long long end = gettimens();
 
-	emit_result("UDS (SOCK_STREAM)", msg_size, (end - start) / LOOP_COUNT,
-		    LOOP_COUNT);
+	free(buf);
+
+	emit_result("Unix Domain Socket (STREAM) - RTT", msg_size,
+		    (end - start) / loops, loops);
 }
 
 int main() {
-	for (int s = 1; s < 1024; s = s * 2) {
-		uds_stream(s);
-	}
+	int sizes[] = {1, KiB(4), KiB(16), KiB(32)};
 
-	for (int s = 1; s < 1024; s = s * 2) {
-		uds_dgram(s);
+	for (int i = 0; i < 4; i++) {
+		uds_stream(sizes[i]);
+		uds_dgram(sizes[i]);
 	}
 }

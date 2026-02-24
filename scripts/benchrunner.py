@@ -1,98 +1,173 @@
 #!/usr/bin/env python3
+import argparse
 import json
 import os
-import sys
 import subprocess
 from pathlib import Path
 
 
-def print_usage():
-    """Print CLI usage."""
-    msg = (
-        "Usage: benchrunner.py [--out FILE] [TEST_PREFIX]\n\n"
-        "Options:\n"
-        "  -o, --out FILE   Write results as JSON to FILE\n"
-        "  -h, --help       Show this help message\n\n"
-        "Args:\n"
-        "  TEST_PREFIX      Run only tests that match PREFIX*.c)\n"
-    )
-    print(msg)
+def repo_root() -> Path:
+    """Return repo root (scripts/..)."""
+    return Path(__file__).resolve().parent.parent
 
 
-def compile_lind(path):
+ROOT = repo_root()
+BENCH_DIR = ROOT / "tests" / "benchmarks"
+LIND_FS = ROOT / "lindfs"
+
+
+def run_cmd(cmd, timeout=180):
+    """Run a command and return CompletedProcess, exiting on failure."""
+    status = subprocess.run(cmd, timeout=timeout,
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if status.returncode:
+        sys_stderr = status.stderr.decode("utf-8")
+        sys_stdout = status.stdout.decode("utf-8")
+        if sys_stderr:
+            print(sys_stderr)
+        if sys_stdout:
+            print(sys_stdout)
+        os._exit(1)
+    return status
+
+
+def bench_relpath(path: Path) -> Path:
+    """Return path relative to tests/benchmarks."""
+    return path.resolve().relative_to(BENCH_DIR)
+
+
+def lindfs_path(rel: Path) -> Path:
+    """Return absolute path inside lindfs for a relative benchmark path."""
+    return LIND_FS / rel
+
+
+def compile_lind(c_file: Path) -> str:
     """Compile a C benchmark to wasm using lind_compile."""
-    status = subprocess.run(["lind_compile", path, "tests/benchmarks/bench.c"],
-                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    run_cmd(["lind_compile", str(c_file), str(
+        BENCH_DIR / "imfs.c"), str(BENCH_DIR / "bench.c")])
 
-    if status.returncode:
-        print(status.stderr.decode('utf-8'))
-        print(status.stdout.decode('utf-8'))
-        os._exit(1)
-
-    return f'{path.replace("tests/benchmarks", "")}wasm'
+    rel = bench_relpath(c_file).with_suffix(".cwasm")
+    # lind_compile places outputs inside lindfs; lind-boot is chrooted there.
+    return rel.as_posix()
 
 
-def compile_native(path):
-    """Compile a C benchmark to a native binary using cc."""
-    status = subprocess.run(["cc", path, "tests/benchmarks/bench.c", "-o",
-                             f"{path.replace('.c', '')}"],
-                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+def compile_native(c_file: Path) -> Path:
+    """Compile a C benchmark to a native binary and place it in lindfs."""
+    rel = bench_relpath(c_file).with_suffix("")
+    out_path = lindfs_path(rel)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    if status.returncode:
-        print(status.stderr.decode('utf-8'))
-        print(status.stdout.decode('utf-8'))
-        os._exit(1)
+    run_cmd(
+        [
+            "cc",
+            str(c_file),
+            str(BENCH_DIR / "imfs.c"),
+            str(BENCH_DIR / "bench.c"),
+            "-o",
+            str(out_path),
+        ]
+    )
+    return out_path
 
-    return f'{path.replace(".c", "")}'
+
+def compile_grate(grate_dir: Path) -> str:
+    """Compile a grate folder and return the output path inside lindfs."""
+    run_cmd(["bash", str(grate_dir / "compile_grate.sh"), "."])
+    rel = bench_relpath(grate_dir).with_suffix(".cwasm")
+    return rel.as_posix()
 
 
-def run_test(res, path, lind=False):
-    """Run a compiled benchmark and append results to the res dict."""
-    run_cmd = []
-
-    if lind:
-        run_cmd.append("sudo")
-        run_cmd.append("lind-boot")
-
-    run_cmd.append(path)
-
-    status = subprocess.run(run_cmd, timeout=180,
-                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
-    if status.returncode:
-        print(status.stderr.decode('utf-8'))
-        os._exit(1)
-
-    for line in status.stdout.decode('utf-8').splitlines():
-        if len(line.split("\t")) != 4:
+def parse_output(res, output, platform):
+    """Parse benchmark output lines and update results."""
+    for line in output.decode("utf-8").splitlines():
+        parts = [part.strip() for part in line.split("\t")]
+        if len(parts) != 4:
             continue
-        test, param, loops, avg = [part.strip() for part in line.split("\t")]
+        test, param, loops, avg = parts
 
-        platform = 'lind' if lind else 'linux'
+        param = int(param)
 
-        if test not in res.keys():
+        if test not in res:
             res[test] = {}
-
-        if param not in res[test].keys():
-            res[test][param] = {'linux': 0, 'lind': 0, 'loops': 0}
+        if param not in res[test]:
+            res[test][param] = {"linux": -1,
+                                "lind": -1, "grate": -1, "loops": -1}
 
         res[test][param][platform] = avg
-        res[test][param]['loops'] = loops
+        res[test][param]["loops"] = loops
+
+
+def run_lind(wasm_paths, res, platform):
+    """Run lind-boot with one or more wasm paths."""
+    cmd = ["sudo", "lind-boot"] + wasm_paths
+    status = run_cmd(cmd)
+    parse_output(res, status.stdout, platform)
+
+
+def run_native(binary_path: Path, res):
+    """Run a native benchmark binary."""
+    status = run_cmd([str(binary_path)])
+    parse_output(res, status.stdout, "linux")
+
+
+def run_grate_test(grate_dir: Path, res):
+    """Run a grate test described by a .grate file or directory."""
+    bins = []
+
+    for part in grate_dir.name.split("."):
+        if part.endswith("_grate"):
+            bins.append(compile_grate(Path(BENCH_DIR) / part))
+        else:
+            c_file = BENCH_DIR / f"{part}.c"
+            bins.append(compile_lind(c_file))
+
+    run_lind(bins, res, "grate")
+
+
+def to_int(value):
+    """Best-effort int conversion for numeric strings."""
+    if isinstance(value, int):
+        return value
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return -1
+
+
+def format_ratio(value, base):
+    """Format value and its ratio to base."""
+    v = to_int(value)
+    b = to_int(base)
+    if v < 0 or b <= 0:
+        return "--"  # return str(value)
+    return f"{v} ({v / b:.3f})"
 
 
 def print_results(res):
-    """Print results as a padded table."""
+    """Print results as a padded table sorted by test and param."""
     rows = []
-    for test in res.keys():
-        for param in res[test].keys():
-            linux = res[test][param]['linux']
-            lind = res[test][param]['lind']
-            loops = res[test][param]['loops']
-            rows.append((test, param, linux, lind, loops))
+    for test in res:
+        for param in res[test]:
+            linux = res[test][param]["linux"]
+            lind = res[test][param]["lind"]
+            grate = res[test][param]["grate"]
+            loops = res[test][param]["loops"]
 
-    rows.sort(key=lambda r: (r[1], r[0]))
+            rows.append(
+                (
+                    test,
+                    param,
+                    linux if linux != -1 else "--",
+                    format_ratio(lind, linux),
+                    format_ratio(grate, linux),
+                    loops,
+                )
+            )
 
-    headers = ("TEST", "PARAM", "LINUX (ns)", "LIND (ns)", "ITERATIONS")
+    rows.sort(key=lambda r: (r[0], r[1]))
+
+    headers = ("TEST", "PARAM", "LINUX (ns)",
+               "LIND (ns)", "GRATE (ns)", "ITERATIONS")
     widths = [len(h) for h in headers]
     for row in rows:
         for i, val in enumerate(row):
@@ -105,43 +180,61 @@ def print_results(res):
         print(fmt.format(*row))
 
 
-def write_json(res, path):
+def write_json(res, path: Path):
     """Write results as JSON to a file."""
     with open(path, "w", encoding="utf-8") as f:
         json.dump(res, f, indent=2, sort_keys=True)
 
 
-if __name__ == "__main__":
-    test_pattern = "*.c"
-    output_json = None
-    if len(sys.argv) > 1:
-        if sys.argv[1] in ("-h", "--help"):
-            print_usage()
-            sys.exit(0)
-        if sys.argv[1] in ("-o", "--out"):
-            if len(sys.argv) < 3:
-                print("error: --out requires a file path", file=sys.stderr)
-                sys.exit(2)
-            output_json = sys.argv[2]
-            if len(sys.argv) > 3:
-                test_pattern = f"{sys.argv[3]}*.c"
-        else:
-            test_pattern = f"{sys.argv[1]}*.c"
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Run lind-wasm microbenchmarks")
+    parser.add_argument(
+        "patterns",
+        nargs="*",
+        help="Test name prefixes (e.g. fs_ imfs_). Defaults to all.",
+    )
+    parser.add_argument(
+        "-o", "--out", dest="output_json", help="Write results to JSON file"
+    )
+    return parser.parse_args()
 
-    bench_dir = Path("tests/benchmarks/")
-    bench_tests = [x for x in list(
-        map(str, bench_dir.glob(test_pattern))) if not x.endswith("bench.c")]
 
-    res = dict()
+def collect_tests(patterns):
+    """Return benchmark paths matching patterns."""
+    if not patterns:
+        patterns = [""]
+    files = []
+    for p in patterns:
+        for path in BENCH_DIR.glob(f"{p}*"):
+            if path.name in ("bench.c", "imfs.c"):
+                continue
+            if path.is_file() or path.suffix == ".grate":
+                files.append(path)
+    return files
 
-    for test in bench_tests:
-        native_path = compile_native(test)
-        lind_path = compile_lind(test)
 
-        run_test(res, lind_path, True)
-        run_test(res, native_path)
+def main():
+    args = parse_args()
+    tests = collect_tests(args.patterns)
+    res = {}
 
-    if output_json:
-        write_json(res, output_json)
+    for test in tests:
+        if test.suffix == ".c":
+            print("Running: ", test)
+            native_path = compile_native(test)
+            lind_path = compile_lind(test)
+            run_lind([lind_path], res, "lind")
+            run_native(native_path, res)
+        elif test.suffix == ".grate":
+            print("Running: ", test)
+            run_grate_test(test.with_suffix(""), res)
+
+    if args.output_json:
+        write_json(res, Path(args.output_json))
     else:
         print_results(res)
+
+
+if __name__ == "__main__":
+    main()

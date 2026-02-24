@@ -1,7 +1,7 @@
 #include "bench.h"
 #include <unistd.h>
 
-#define LOOP_COUNT 100000
+#define LOOP_COUNT 1000000
 
 int main() {
 	long long start_time = gettimens();
@@ -9,8 +9,6 @@ int main() {
 		close(-1);
 	}
 	long long end_time = gettimens();
-
-	// Get average time spent on the syscall.
 	long long average_time = (end_time - start_time) / LOOP_COUNT;
 
 	emit_result("close", -1, average_time, LOOP_COUNT);

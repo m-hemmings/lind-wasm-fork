@@ -1,6 +1,6 @@
 #include "bench.h"
 
-#define LOOP_COUNT 1000
+#define LOOP_COUNT 10000
 
 unsigned long long fibonacci(int n) {
 	if (n <= 1)

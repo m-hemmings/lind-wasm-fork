@@ -114,18 +114,6 @@ pub fn add_to_linker<
         },
     )?;
 
-    // attach copy_handler_table_to_cage to wasmtime
-    linker.func_wrap(
-        "lind",
-        "copy_handler_table_to_cage",
-        move |thiscage: u64, targetcage: u64| -> i32 {
-            copy_handler_table_to_cage(
-                UNUSED_ARG, thiscage, targetcage, UNUSED_ID, UNUSED_ARG, UNUSED_ID, UNUSED_ARG,
-                UNUSED_ID, UNUSED_ARG, UNUSED_ID, UNUSED_ARG, UNUSED_ID, UNUSED_ARG, UNUSED_ID,
-            ) as i32
-        },
-    )?;
-
     // export lind-get-memory-base for libc to query base address
     linker.func_wrap(
         "lind",

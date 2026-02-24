@@ -166,6 +166,9 @@ int copy_data_between_cages(uint64_t thiscage, uint64_t targetcage, uint64_t src
 }
 
 // 3i function call to copy handler table to a target cage
+// typically used when a new cage is created and we need to copy the syscall handler 
+// table from another cage (has the handlers different than default rawposix registration) 
+// to the new cage
 // thiscage: the cage id of the caller cage
 // targetcage: the cage id of the target cage
 int copy_handler_table_to_cage(uint64_t thiscage, uint64_t targetcage)

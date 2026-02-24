@@ -60,7 +60,7 @@ void bench_pipe(int msg_size) {
 	close(c2p[0]);
 	wait(NULL);
 
-	emit_result("PIPE", msg_size, (t1 - t0) / LOOP_COUNT, LOOP_COUNT);
+	emit_result("Pipe", msg_size, (t1 - t0) / LOOP_COUNT, LOOP_COUNT);
 }
 
 int main() {

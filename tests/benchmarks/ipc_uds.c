@@ -52,7 +52,7 @@ void uds_dgram(int msg_size) {
 	}
 	long long end = gettimens();
 
-	emit_result("UDS DGRAM", msg_size, (end - start) / LOOP_COUNT,
+	emit_result("UDS (SOCK_DGRAM)", msg_size, (end - start) / LOOP_COUNT,
 		    LOOP_COUNT);
 }
 
@@ -98,7 +98,7 @@ void uds_stream(int msg_size) {
 	}
 	long long end = gettimens();
 
-	emit_result("UDS STREAM", msg_size, (end - start) / LOOP_COUNT,
+	emit_result("UDS (SOCK_STREAM)", msg_size, (end - start) / LOOP_COUNT,
 		    LOOP_COUNT);
 }
 

@@ -13,5 +13,5 @@ int main() {
 	// Get average time spent on the syscall.
 	long long average_time = (end_time - start_time) / LOOP_COUNT;
 
-	emit_result("CLOSE", -1, average_time, LOOP_COUNT);
+	emit_result("close", -1, average_time, LOOP_COUNT);
 }

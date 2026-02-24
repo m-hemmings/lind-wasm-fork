@@ -21,7 +21,7 @@ def print_usage():
 
 def compile_lind(path):
     """Compile a C benchmark to wasm using lind_compile."""
-    status = subprocess.run(["lind_compile", path, "bench.c"],
+    status = subprocess.run(["lind_compile", path, "tests/benchmarks/bench.c"],
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
     if status.returncode:
@@ -34,7 +34,7 @@ def compile_lind(path):
 
 def compile_native(path):
     """Compile a C benchmark to a native binary using cc."""
-    status = subprocess.run(["cc", path, "bench.c", "-o",
+    status = subprocess.run(["cc", path, "tests/benchmarks/bench.c", "-o",
                              f"{path.replace('.c', '')}"],
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
@@ -83,14 +83,16 @@ def run_test(res, path, lind=False):
 def print_results(res):
     """Print results as a padded table."""
     rows = []
-    for test in sorted(res.keys()):
-        for param in sorted(res[test].keys()):
+    for test in res.keys():
+        for param in res[test].keys():
             linux = res[test][param]['linux']
             lind = res[test][param]['lind']
             loops = res[test][param]['loops']
             rows.append((test, param, linux, lind, loops))
 
-    headers = ("TEST", "PARAM", "LINUX", "LIND", "ITERATIONS")
+    rows.sort(key=lambda r: (r[1], r[0]))
+
+    headers = ("TEST", "PARAM", "LINUX (ns)", "LIND (ns)", "ITERATIONS")
     widths = [len(h) for h in headers]
     for row in rows:
         for i, val in enumerate(row):
@@ -127,7 +129,8 @@ if __name__ == "__main__":
             test_pattern = f"{sys.argv[1]}*.c"
 
     bench_dir = Path("tests/benchmarks/")
-    bench_tests = list(map(str, bench_dir.glob(test_pattern)))
+    bench_tests = [x for x in list(
+        map(str, bench_dir.glob(test_pattern))) if not x.endswith("bench.c")]
 
     res = dict()
 

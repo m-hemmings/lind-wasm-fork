@@ -1,139 +1,213 @@
 # Dynamic Loading in wasmtime
 
 ## Motivation
-Dynamic loading reduces the memory footprint by allowing libraries to be loaded only when needed, rather than linking them statically at compile time. It also eliminates the need to recompile the application when a dependent library changes, provided the interface remains compatible. Additonally, in the applications we test, libraries are loaded at runtime using `dlopen()` and `dlsym()`. Therefore, to correctly support these applications, dynamic loading functionality is required.
+Dynamic loading reduces the memory footprint by allowing shared libraries to be loaded only when they are actually needed at runtime, rather than being statically linked into the application at compile time. This leads to more efficient memory usage, especially when multiple programs share the same libraries. It also avoids code duplication across binaries, reducing overall storage requirements.
+
+Another important advantage is improved maintainability and flexibility. When a dependent library is updated, the application does not need to be recompiled, as long as the library’s interface (ABI) remains compatible. This simplifies deployment, enables independent updates, and facilitates security patches without rebuilding the entire application.
+
+Dynamic loading also supports modular and extensible system design. Applications can load optional components, plugins, or backends at runtime based on configuration or environment, making it possible to extend functionality without modifying the core executable. In the applications we evaluate, libraries are explicitly loaded at runtime using `dlopen()` and symbol resolution is performed via `dlsym()`. Therefore, proper support for dynamic loading is a functional requirement to ensure correctness and compatibility with these applications.
 
 ## Design Decisions
 
-When a program is executed on Linux, the kernel creates a new process image using execve() and maps the ELF executable into the process’s virtual address space. For statically linked binaries, the kernel sets up the stack and auxiliary data structures and transfers control directly to the program’s entry point. For dynamically linked binaries, the ELF header contains a PT_INTERP segment specifying the dynamic loader (typically `/lib64/ld-linux-x86-64.so.2`). The kernel maps this loader into the same process, transfers control to it, and the loader then loads required shared libraries, resolves symbols, performs relocations, and finally jumps to the program entry point. Crucially, the dynamic loader and the main executable share the same virtual address space and execute within the same process; the loader is not a separate process.
+### The Linux Native Execution Model
 
-In contrast, WebAssembly (WASM) binaries are not executed directly by the operating system. They run inside a runtime such as Wasmtime, which parses and validates the module, JIT-compiles the code, and instantiates the module. Instantiation involves allocating linear memory—a contiguous, sandboxed memory region —initializing globals and tables, and copying data segments into memory. Unlike ELF binaries, WASM modules do not rely on OS-level virtual memory mapping for code or libraries. Instead, execution and memory management are handled entirely within the runtime, which enforces isolation, bounds checking, and memory safety. 
+When a program is executed on Linux, the kernel creates a new process image using `execve()` and maps the ELF executable into the process’s virtual address space. For statically linked binaries, the kernel sets up the stack and auxiliary data structures, then transfers control directly to the program’s entry point.
 
-In the Lind system, dynamic loading support is implemented by extending Wasmtime’s parsing and instantiation mechanisms. Calls such as `dlopen`, `dlsym`, and `dlclose` from glibc are redirected to runtime-provided implementations. The runtime then loads additional WASM modules, allocates memory, resolves symbols, and performs relocation handling—all within the sandboxed environment. Integrating the dynamic loader inside the runtime is necessary because WebAssembly linking requires direct, synchronous modification of internal runtime state, such as function tables and memory bounds, which an external process cannot access without prohibitive serialization overhead. Keeping the dynamic loader internal also avoids the latency of inter-process communication, ensuring that module instantiation remains fast, secure, and fully within the trusted computing base.
+For dynamically linked binaries, the execution model splits responsibilities: the trusted kernel handles the initial loading, but dynamic loading is managed in user space. The ELF header contains a `PT_INTERP` segment specifying an external dynamic loader (typically `/lib64/ld-linux-x86-64.so.2`). The kernel maps this loader into the same process and transfers control to it. The loader then pulls in required shared libraries, resolves symbols, and performs relocations before finally jumping to the program's entry point. Crucially, this dynamic loader operates entirely within the untrusted user-space environment, sharing the same virtual address space as the main executable.
+
+### The WebAssembly Execution Model
+
+In contrast, WebAssembly (WASM) binaries are not executed directly by the operating system. They run inside a trusted host runtime, such as Wasmtime, which parses and validates the module, JIT-compiles the code, and instantiates it.
+
+Instantiation involves allocating linear memory - a contiguous, sandboxed memory region - initializing globals and tables, and copying data segments into memory. Unlike native ELF binaries, WASM modules do not rely on OS-level virtual memory mapping. Instead, execution, memory management, and boundary mediation are handled entirely by the runtime, which enforces strict isolation and memory safety.
+
+### Dynamic Loading within the Lind System
+
+In the Lind system, dynamic loading support is implemented by fundamentally extending Wasmtime’s parsing and instantiation mechanisms. Calls from `glibc`, such as dlopen, dlsym, and dlclose, are redirected to runtime-provided implementations. The runtime then loads additional WASM modules, allocates memory, resolves symbols, and handles relocations natively.
+
+Unlike the traditional Linux model where dynamic linking is delegated to an external, untrusted user-space process, Lind integrates the dynamic loader directly into the trusted Wasmtime runtime. This architectural shift is necessary for several reasons:
+
+1. Architectural Consistency: An essential requirement of any dynamic loader is the ability to read memory contents, resolve symbols, and modify relocation targets. Because the WebAssembly runtime already maintains absolute control over module memory, function tables, and instantiation state, extending it to handle dynamic loading is a natural fit.
+
+2. Performance and Efficiency: WebAssembly linking requires direct, synchronous modification of internal runtime state, such as indirect function tables and memory bounds. Relying on an external loader process to manipulate these structures would introduce prohibitive overhead from inter-process communication (IPC) latency, data marshaling, and serialization.
+
+3. Security: By internalizing the dynamic loader, the system avoids context-switching to an untrusted environment, ensuring that the entire module instantiation and linking process remains fast, secure, and securely isolated within the trusted computing base.
 
 ## Current Implementation Status
-Have implemented dynamic loading support in Wasmtime. For applications that are compiled as dynamically linked executables or shared libraries, we are able to support both capabilities below:
-1. Launch the application while injecting all required dependent libraries using the `--preload` option (similar to `LD_PRELOAD`).
-2. Ensure that `dlopen()`, `dlsym()`, and `dlclose()` are properly resolved at runtime and corresponding libraries loaded.
+We have implemented dynamic loading support in Wasmtime. For applications that are compiled as dynamically linked executables or shared libraries, we are able to support both capabilities below:
+
+1. Launch the application while injecting all required dependent libraries using the `--preload` option (similar to `LD_PRELOAD`).
+2. Ensure that `dlopen()`, `dlsym()`, and `dlclose()` are properly resolved at runtime and corresponding libraries loaded.
 
 	  
 ## Additional Features to be added:
-1. Support for fork, threads and signals within the shared libraries have to be added.
-2. Should be integrated with lind-boot
-	  
+1. Support for fork, threads, and signals within the shared libraries.
+
 ## Changes made to implement dynamic loading:
 
-"To execute WebAssembly applications within Lind, Wasmtime is modified to interface with RawPOSIX for handling system calls such as `mmap`. Specifically, the following changes were implemented in Wasmtime to support dynamic loading:"
+To execute WebAssembly applications within Lind, Wasmtime is modified to interface with RawPOSIX for handling system calls such as `mmap`. Specifically, the following changes were implemented in Wasmtime to support dynamic loading:
+
 
 ### Parsing the dynamic section 
-The `dylink.0` custom section within WASM shared libraries is parsed to retrieve dynamic linking metadata. The `load_module` function is responsible for parsing the entire WASM binary to extract all section contents, including code, data, imports, exports, and the dynamic linking information.
+The `dylink.0` custom section within WASM shared libraries is parsed to retrieve dynamic linking metadata. The `load_module` function is responsible for parsing the entire WASM binary to extract all section contents, including code, data, imports, exports, and dynamic linking information. As of now, `memory_size`, `memopry_alignment`, `table_size`, `table_alignment` and `importinfo` are parsed. We do not handle `needed` and `exportinfo` contents of `dylink.0`c section.
 
-### Instantiate the dynamic libraries which are passed using `--preload`
-1. Allocate memory for the shared libraries by invoking mmap within rawposix
-2. Relocations are applied by invoking `__wasm_apply_data_relocs` and `__wasm_apply_tls_relocs` which are functions within the wasm binary added in the compilation/linking phase.
-3. Global Offset Table (GOT) is created and stored in wasmtime. Implemented using a Hash Table which maps symbols to their addresses.
-4. Once all modules are loaded into memory, resolve the final address for all functions (GOT.func) and data (GOT.mem) within the GOT table. This is done by the Linker which is part of wasmtime.
-### Handling dynamic libraries which are loaded via dlopen()
-1. When dlopen(), dlsym() and dlclose() with glibc invokes their respective implementations within Lind.
-2. when lind dlopen is invoked, it does the following:
-	- Gets the full path of the library by prepending LIND_ROOT to the library name
-	- Loads the module/library which involves parsing the wasm file and extracting its section contents including code, data, imports, exports etc.
-	- Appends the table with the table of main_module. table refers to indirect function call table. 
-	- Instantiate the library which involves
-	- Allocate memory for the shared library by invoking mmap within rawposix
-	- Relocations are applied by invoking `__wasm_apply_data_relocs` and `__wasm_apply_tls_relocs` which are functions within the wasm binary added in the compilation/linking phase.
-	- Resolve the final address for all functions (GOT.func) and data (GOT.mem) within the GOT table. 
 
-3. When dlsym() is invoked, correspond lind function, fetches the address of the function passed as argument, and invokes it.
+### Handling libraries passed via `--preload`
+
+1. Allocate memory for the shared libraries by invoking `mmap` within RawPOSIX.
+2. Apply relocations by invoking `__wasm_apply_data_relocs` and `__wasm_apply_tls_relocs`. These are functions hardcoded into the Wasm binary by `wasm-ld` during the `-shared` compilation phase.
+3. Populate `LindGOT` with symbol addresses.
+4. Resolve the final address for all functions (`GOT.func`) and data (`GOT.mem`) within the GOT table using the Wasmtime Linker.
+
+
+### Memory Initialization and Instantiation (`instance.rs`)
+
+Several low-level changes govern how Wasmtime allocates memory and recognizes module types during instantiation:
+
+* **`init_vmmap()`**: Initializes memory at RawPOSIX before `mmap` is called.
+* **System Memory Allocation**: During instantiation, Wasmtime interacts directly with RawPOSIX to allocate system memory for the module (part of the `init_vmmap` step).
+* **`InstantiateType::InstantiateLib`  Instantiates dependent libraries
+
+
+### Global Offset Table (`LindGOT`) and Linking (`linker.rs`)
+
+`LindGOT` is Lind’s thread-safe Global Offset Table helper utilized for dynamic linking and late binding of symbols across separately-loaded Wasm modules.
+
+* **Indirection Slots**: Instead of hard-wiring addresses, `LindGOT` maintains a concurrent-safe map from a symbol name (`String`) to a `u32` GOT slot. A value of `0` in the slot denotes an unresolved symbol.
+* **Resolution Semantics**: Utilizes atomic reads/writes with a "first definition wins" approach. Conditional patching ensures a symbol is only updated if unresolved, preventing race conditions between multiple resolvers.
+* **Linker Behavior**: The Wasmtime linker links imported functions to their actual targets. For dynamically linked binaries, compiler-assigned `.GOT.func` and `.GOT.mem` handles are utilized. The linker creates placeholder instances for libraries before they are fully instantiated, resolving final addresses once loaded into memory.
+
 
 ### Linear Memory Changes
 For statically linked binary which has fixed addresses, the memory layout is fixed. Stack comes first, followed by data and heap. In dynamically linked binary, since the code is compiled as position-independent, the memory layout can be determined at runtime. The memory layout for current implementation is as follows:
 ![Memory Layout (linear memory) in case of wasm binaries with dynamic loading](images/linear_memory.png)
 
 
-# Generating a WASM Binary for C/C++ applications (Static build)
-Let us first explore a WASM binary and steps required to create a WASM binary (build) and then run it.
+### Handling `dlopen` and `dlsym`
 
-Programs written in higher level programming languages like C/C++/Rust can be compiled to WASM binaries. A .wasm file is a binary encoding of instructions for a virtual stack-based machine. It must be JIT compiled or AOT compiled or interpreted.
+In the Lind environment, standard dynamic linking calls from the guest's glibc (`dlopen`, `dlsym`, `dlclose`) are intercepted and forwarded to custom host functions within the Wasmtime runtime. This bridges the sandboxed WebAssembly execution with the trusted host's module management. `SymbolMap` acts as a per-library symbol namespace to model a dynamically loaded library’s exports and lifecycle state.
 
-A C/C++ program can be compiled using clang with a WebAssembly target to produce a WASM binary.
 
-```
+#### `dlopen` (Loading & Instantiation)
+When invoked from the WebAssembly guest, the host implementation of `dlopen` performs the following steps:
+* **Pointer Translation:** Translates the raw pointer provided by the guest (which is merely an offset into the Wasm linear memory) into a valid host-side string representing the library path.
+* **Delegation:** Delegates the actual loading and instantiation to a `loader` callback injected by the runtime.
+* **Execution:** The `loader` receives a mutable `Caller` (granting access to internal runtime state), the resolved library path, and the `dlopen` mode flags.
+* **Returns:** On success, it returns an integer handle that uniquely identifies the loaded library instance.
+
+
+
+#### `dlsym` (Symbol Resolution)
+This host function is responsible for finding the memory address or function index of a requested symbol. Lind invokes `get_library_symbols()` to fetch the exact symbol address from the corresponding `SymbolMap` (using its handler) and executes it.
+ It resolves the symbol name based on POSIX-style scope rules:
+* **`RTLD_DEFAULT`:** Searches for the symbol across the global namespace.
+* **Specific Handle:** Searches exclusively within the library identified by the provided integer handle.
+* *Note: `RTLD_NEXT` (searching the next object in the load order) is currently unsupported.*
+* **Returns:** The resolved symbol's value (e.g., a function index or memory address handle) so the Wasm guest can interact with it.
+
+#### `dlclose` (Lifecycle Management)
+This function manages the cleanup and unloading of libraries.
+* **Reference Counting:** Decrements the reference count of the library identified by the provided `handle`. 
+* **Unloading:** If the reference count reaches zero and the library is flagged as deletable (i.e., it was not loaded with `RTLD_NODELETE`), the host removes it from the global symbol table and frees associated resources.
+* **Returns:** `0` on success, strictly adhering to POSIX-compatible conventions.
+
+
+
+
+# Generating a WASM Binary for C/C++ applications
+
+Programs written in higher-level programming languages like C, C++, or Rust can be compiled to WASM binaries. A `.wasm` file is a binary encoding of instructions for a virtual stack-based machine. It must be JIT compiled, AOT compiled, or interpreted.
+
+A C/C++ program can be compiled using `clang` with a WebAssembly target to produce a WASM binary:
+
+```bash
 clang --target=wasm32-unknown-wasi --sysroot=$SYSROOT_FOLDER -O2 gcd.c -o gcd.wasm
+
 ```
-1. Preprocessing - The C preprocessor handled macros and header expansion
-2. Compilation (Frontend) - Clang parses C into LLVM IR
-3. Code Generation (LLVM Backend) - Converts LLVM IR into Webassembly instructions as Webassembly object file
-4. Linking using `wasm-ld` :
-	The object file contains WebAssembly code with unresolved symbols. During linking, `wasm-ld` combines the object file with startup files and static libraries, resolving undefined symbols by pulling in only the required object files from those archives within the `sysroot/` directory. The linker then merges all code, data, memory definitions, and remaining imports into a single final .wasm file
+
+1. **Preprocessing:** The C preprocessor handles macros and header expansion.
+2. **Compilation (Frontend):** Clang parses C into LLVM IR.
+3. **Code Generation (LLVM Backend):** Converts LLVM IR into WebAssembly instructions as a WebAssembly object file.
+4. **Linking (`wasm-ld`):** The object file contains WebAssembly code with unresolved symbols. `wasm-ld` combines the object file with startup files and static libraries, pulling in required object files from the `sysroot/` directory. The linker merges all code, data, memory definitions, and imports into a single `.wasm` file.
 
 ## WASM Binary contents
 A `.wasm` binary contains [1] [2] [3]: 
-- Magic Header - Identifies the file as a WebAssembly binary
-- Version number - Specifies the WebAssembly binary format version
-- Sections (Each section contains a section ID, section size, section contents)
-	- Type - Defines all functional signatures (parameter and return types) used in the module
-	- Import - Declares functions (incl module name), memories, tables or globals that must be provided by the host
-	- Function - Lists the type indices of functions defined inside the module
-	- Memory - Declares linear memory regions (lower limit and upper limit(optional) required for running the module)
-	- Global - Stores internal (non-imported) global variable information including type, whether it is read-only, initialization bytecode
-	- Table - Declares indirect function call table
-	- Export - Specifies which functions, memories, tables or globals are visible to the host
-	- Start - Identifies a function that is automatically executed upon instantiation
-	- Element - Initializes table entries
-	- Code - Contains the  local variables info and bytecode of internal functions (WebAssembly instructions)
-	- Data - Contains memory initialization information. Each entry includes memory index, the starting position (bytecode and much be a constant expression) and initial data
-
-WebAssembly by default just produces a single data section. But when using clang/LLVM to compile C/C++ to wasm, it allocate separate sections for different types of data to support programs written in these languages.
-- data (Initialized data)
-- tdata (Thread related data)
-- .rodata (Read-only data)
+* **Magic Header:** Identifies the file as a WebAssembly binary.
+* **Version number:** Specifies the WebAssembly binary format version.
+* **Sections:** (Each section contains a section ID, size, and contents)
+* **Type:** Defines functional signatures used in the module.
+* **Import:** Declares functions, memories, tables, or globals provided by the host.
+* **Function:** Lists the type indices of functions defined inside the module.
+* **Memory:** Declares linear memory regions.
+* **Global:** Stores internal global variable information.
+* **Table:** Declares the indirect function call table.
+* **Export:** Specifies entities visible to the host.
+* **Start:** Identifies a function executed automatically upon instantiation.
+* **Element:** Initializes table entries.
+* **Code:** Contains local variable info and internal function bytecode.
+* **Data:** Contains memory initialization information (index, starting position, initial data).
 
 
-## Building a shared WASM library 
 
-A WebAssembly dynamic/shared library is a WebAssembly binary with a special custom section that indicates this is a dynamic library and contains additional information needed by the loader. 
+WebAssembly by default produces a single data section. However, when using clang/LLVM for C/C++, separate sections are allocated for different data types:
 
-During **compilation**, `-fPIC` flag produces position-independent code whose final address is known only at runtime. Hence, all symbols that is not guaranteed to be local to this shared object will be accessed via `GOT.mem` and `GOT.func` in the generated object code.
+* `.data` (Initialized data)
+* `.tdata` (Thread-related data)
+* `.rodata` (Read-only data)
 
-During **linking**, `-shared` produces a shared library and `-pie` produces a dynamically linked executable.
 
-To generate **a shared WASM library,** the following compiler and linker flags should be used.
-```
+## Building a shared WASM library
+
+A WebAssembly dynamic/shared library is a WebAssembly binary with a special custom section indicating it is a dynamic library, alongside additional loader information.
+
+* **Compilation:** The `-fPIC` flag produces position-independent code whose final address is known only at runtime. Non-local symbols are accessed via `GOT.mem` and `GOT.func`.
+* **Linking:** The `-shared` flag produces a shared library, while `-pie` produces a dynamically linked executable.
+
+To generate a shared WASM library, use the following flags:
+
+```bash
 CFLAGS=-fPIC
 LDFLAGS=-Wl,-shared 
+
 ```
-Additional linker flags that can be used
+
+Additional linker flags that can be used:
+
+```bash
+-Wl,--import-memory \
+-Wl,--shared-memory \
+-Wl,--export-dynamic \
+-Wl,--experimental-pic \
+-Wl,--unresolved-symbols=import-dynamic
+
 ```
-.   -Wl,--import-memory \
-    -Wl,--shared-memory \
-    -Wl,--export-dynamic \
-    -Wl,--experimental-pic \
-    -Wl,--unresolved-symbols=import-dynamic \
-```
+
 
 ## Metadata added by linker to the shared WASM binary
-- The generated shared WASM library binary will have a custom section called **`dynlink.0`** with the following information:
-1. WASM_DYNLINK_MEM_INFO which specifies the memory and table space requirements of the module (memory size, memory alignment, table size, table alignment)
-2. WASM_DYLINK_NEEDED - Specifies external modules that this library depends on
-3. WASM_DYLINK_EXPORT_INFO - Specify additional metadata about exports
-4. WASM_DYLINK_IMPORT_INFO - Specify additional metadata about imports
-5. WASM_DYLINK_RUNTIME_PATH = Specify the runtime path, corresponding to DT_RUNPATH in ELF binaries
 
- - `wasm-ld` will add `__wasm_apply_data_relocs` and `__wasm_apply_tls_relocs` functions to the final WASM binary  which contain hardcoded information about relocation. 
+The generated shared WASM library binary will have a custom section called `dynlink.0` containing:
+
+1. **`WASM_DYNLINK_MEM_INFO`**: Specifies memory and table space requirements.
+2. **`WASM_DYLINK_NEEDED`**: Specifies external module dependencies.
+3. **`WASM_DYLINK_EXPORT_INFO`**: Specifies export metadata.
+4. **`WASM_DYLINK_IMPORT_INFO`**: Specifies import metadata.
+5. **`WASM_DYLINK_RUNTIME_PATH`**: Specifies the runtime path (equivalent to `DT_RUNPATH` in ELF).
+
+Additionally, `wasm-ld` adds `__wasm_apply_data_relocs` and `__wasm_apply_tls_relocs` to the final binary to handle relocation during instantiation.
+
 
 # Running the .wasm file
-This .wasm file has to be interpreted and converted to native code and then run within a VM.
 
-The steps involved are :
-1. Read the .wasm file
-2. Parse the structured sections (types, imports, functions, memory etc) of .wasm binary file
-3. Validate the module - The module is validated for type safety, structural correctness, and sandbox rules
-4. Compile to native code - Wasmtime translates WebAssembly bytecode into native machine code
-5. Create a Store and Link Imports - A store is created to hold runtime state, and all declared imports (eg : WASI functions) are resolved to host implementations
-6. Instantiate the Module - Transform the static module into a live execution instance. This involves **allocating** all of the module's Linear Memory, tables, globals in the store, creating separate runtime representations for each function, and **linking them to their resolved imports**. and function instances are allocated memory and initialized inside a new instance
-7. Initialize Memory and Tables -After allocation, Wasmtime sets up the module’s initial state by populating memory and tables. Data segments from the Data Section of the module are copied into the linear memory at the offsets specified by the module, often including static strings, arrays, or other constants. Similarly, element segments from the Element Section are used to initialize tables, typically mapping function references for indirect calls.
-8. Run the start function
+This `.wasm` file must be interpreted, converted to native code, and run within a VM. The steps are:
+
+1. **Read the file:** Load the `.wasm` file into memory.
+2. **Parse structured sections:** Extract types, imports, functions, and memory.
+3. **Validate the module:** Ensure type safety, structural correctness, and sandbox compliance.
+4. **Compile to native code:** Wasmtime translates WebAssembly bytecode into native machine code.
+5. **Create a Store and Link Imports:** A store is created to hold runtime state. Declared imports (e.g., WASI functions) are resolved to host implementations.
+6. **Instantiate the Module:** Transform the static module into a live execution instance. This involves allocating linear memory, tables, and globals in the store, and linking runtime representations to their resolved imports.
+7. **Initialize Memory and Tables:** Wasmtime copies data segments from the Data Section into linear memory at specified offsets. Element segments are used to initialize tables for indirect calls.
+8. **Run the start function:** Execute the module's entry point.
 
 
 # References

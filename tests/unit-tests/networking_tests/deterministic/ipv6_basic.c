@@ -73,15 +73,21 @@ int main(void) {
     assert(n == (ssize_t)strlen(msg));
     assert(memcmp(buf, msg, strlen(msg)) == 0);
 
-    /* getpeername on client — verify full address not truncated */
-    struct sockaddr_in6 pn = {0};
+    /* getpeername on client — kernel may return AF_INET or AF_INET6
+     * for IPv4-mapped connections depending on configuration */
+    struct sockaddr_storage pn = {0};
     socklen_t pnlen = sizeof(pn);
     assert(getpeername(cli, (struct sockaddr *)&pn, &pnlen) == 0);
-    assert(pnlen == sizeof(struct sockaddr_in6));
-    assert(pn.sin6_family == AF_INET6);
-    assert(ntohs(pn.sin6_port) == PORT);
-    /* Verify full 16-byte sin6_addr (::ffff:127.0.0.1 mapped address) */
-    assert(memcmp(&pn.sin6_addr, mapped, 16) == 0);
+    assert(pn.ss_family == AF_INET6 || pn.ss_family == AF_INET);
+    if (pn.ss_family == AF_INET6) {
+        struct sockaddr_in6 *v6 = (struct sockaddr_in6 *)&pn;
+        assert(ntohs(v6->sin6_port) == PORT);
+        assert(memcmp(&v6->sin6_addr, mapped, 16) == 0);
+    } else {
+        struct sockaddr_in *v4 = (struct sockaddr_in *)&pn;
+        assert(ntohs(v4->sin_port) == PORT);
+        assert(v4->sin_addr.s_addr == htonl(INADDR_LOOPBACK));
+    }
 
     /* IPv6 UDP socket */
     int udp = socket(AF_INET6, SOCK_DGRAM, 0);

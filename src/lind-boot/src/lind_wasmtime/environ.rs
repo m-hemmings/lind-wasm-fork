@@ -1,11 +1,9 @@
 use wasmtime::{Caller, Linker};
 use wasmtime_lind_multi_process::get_memory_base;
 
-/// Minimal replacement for wasi-common that provides only the 4 WASI preview1
-/// functions our glibc `_start()` needs for argv/environ initialization.
-///
-/// The guest imports these as `wasi_snapshot_preview1::{args_sizes_get, args_get,
-/// environ_sizes_get, environ_get}`.
+/// Stores argv and environment variables for the guest program. During glibc's
+/// `_start()`, the guest calls 4 imported functions to retrieve argc/argv and
+/// environ. This struct holds the data those functions serve.
 #[derive(Clone)]
 pub struct LindEnviron {
     args: Vec<String>,
@@ -13,8 +11,9 @@ pub struct LindEnviron {
 }
 
 impl LindEnviron {
-    /// Build from CLI options.  `vars` entries with `None` values inherit
-    /// the variable from the host process via `std::env::var`.
+    /// Build from CLI args and `--env` flags. For `--env FOO=BAR`, the value
+    /// is used directly. For `--env FOO` (no `=`), the value is inherited
+    /// from the host process via `std::env::var`.
     pub fn new(args: &[String], vars: &[(String, Option<String>)]) -> Self {
         let env = vars
             .iter()
@@ -52,11 +51,17 @@ unsafe fn write_bytes(base: *mut u8, offset: usize, src: &[u8]) {
     }
 }
 
-/// Register the 4 WASI preview1 functions under `wasi_snapshot_preview1`.
+/// Register the 4 argv/environ host functions under the `lind` linker module.
+///
+/// These are called by glibc's `_start()` to initialize `argc`, `argv`, and
+/// `environ` before entering `main()`. Each function writes directly into the
+/// guest's linear memory at offsets provided by the caller.
 pub fn add_to_linker<T: Clone + Send + Sync + 'static>(
     linker: &mut Linker<T>,
     get_cx: impl Fn(&T) -> &LindEnviron + Send + Sync + Copy + 'static,
 ) -> anyhow::Result<()> {
+    // args_sizes_get: writes argc and total argv buffer size (sum of NUL-terminated arg lengths)
+    // to the two guest memory offsets provided.
     linker.func_wrap(
         "lind",
         "args_sizes_get",
@@ -73,6 +78,9 @@ pub fn add_to_linker<T: Clone + Send + Sync + 'static>(
         },
     )?;
 
+    // args_get: writes an array of i32 pointers at argv_ptrs and the NUL-terminated
+    // argument strings at argv_buf. The guest pre-allocates both regions using
+    // sizes from args_sizes_get.
     linker.func_wrap(
         "lind",
         "args_get",
@@ -95,6 +103,8 @@ pub fn add_to_linker<T: Clone + Send + Sync + 'static>(
         },
     )?;
 
+    // environ_sizes_get: writes the number of environment variables and the total
+    // buffer size (sum of "KEY=VALUE\0" lengths) to the two guest memory offsets.
     linker.func_wrap(
         "lind",
         "environ_sizes_get",
@@ -115,6 +125,9 @@ pub fn add_to_linker<T: Clone + Send + Sync + 'static>(
         },
     )?;
 
+    // environ_get: writes an array of i32 pointers at env_ptrs and the
+    // NUL-terminated "KEY=VALUE" strings at env_buf. Same allocation contract
+    // as args_get — guest uses sizes from environ_sizes_get.
     linker.func_wrap(
         "lind",
         "environ_get",

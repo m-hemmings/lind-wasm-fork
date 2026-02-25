@@ -139,7 +139,7 @@ pub fn sc_convert_path_to_host(
     #[cfg(feature = "secure")]
     {
         if relative_path.len() >= PATH_MAX {
-            return Err(libc::ENAMETOOLONG);
+            return Err(Errno::ENAMETOOLONG);
         }
     }
 

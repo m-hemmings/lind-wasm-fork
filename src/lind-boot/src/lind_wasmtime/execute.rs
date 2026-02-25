@@ -290,10 +290,7 @@ fn attach_api(
             .as_ref()
             .expect("lind_environ must be initialized")
     })?;
-    wstore.data_mut().lind_environ = Some(LindEnviron::new(
-        &lindboot_cli.args,
-        &lindboot_cli.vars,
-    ));
+    wstore.data_mut().lind_environ = Some(LindEnviron::new(&lindboot_cli.args, &lindboot_cli.vars));
 
     // Setup WASI-thread
     let _ =

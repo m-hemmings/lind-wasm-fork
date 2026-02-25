@@ -18,8 +18,12 @@ LIND_FS = ROOT / "lindfs"
 
 def run_cmd(cmd, timeout=180):
     """Run a command and return CompletedProcess, exiting on failure."""
-    status = subprocess.run(cmd, timeout=timeout,
-                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        status = subprocess.run(cmd, timeout=timeout,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    except Exception:
+        return None
+
     if status.returncode:
         sys_stderr = status.stderr.decode("utf-8")
         sys_stdout = status.stdout.decode("utf-8")
@@ -79,34 +83,42 @@ def compile_grate(grate_dir: Path) -> str:
 
 def parse_output(res, output, platform):
     """Parse benchmark output lines and update results."""
-    for line in output.decode("utf-8").splitlines():
-        parts = [part.strip() for part in line.split("\t")]
-        if len(parts) != 4:
-            continue
-        test, param, loops, avg = parts
+    try:
+        for line in output.decode("utf-8").splitlines():
+            parts = [part.strip() for part in line.split("\t")]
+            if len(parts) != 4:
+                continue
+            test, param, loops, avg = parts
 
-        param = int(param)
+            param = int(param)
 
-        if test not in res:
-            res[test] = {}
-        if param not in res[test]:
-            res[test][param] = {"linux": -1,
-                                "lind": -1, "grate": -1, "loops": -1}
+            if test not in res:
+                res[test] = {}
+            if param not in res[test]:
+                res[test][param] = {"linux": -1,
+                                    "lind": -1, "grate": -1, "loops": -1}
 
-        res[test][param][platform] = avg
-        res[test][param]["loops"] = loops
+            res[test][param][platform] = avg
+            res[test][param]["loops"] = loops
+    except:
+        print("Invalid output from test")
 
 
 def run_lind(wasm_paths, res, platform):
     """Run lind-boot with one or more wasm paths."""
     cmd = ["sudo", "lind-boot"] + wasm_paths
     status = run_cmd(cmd)
+    if not status:
+        return
+
     parse_output(res, status.stdout, platform)
 
 
 def run_native(binary_path: Path, res):
     """Run a native benchmark binary."""
     status = run_cmd([str(binary_path)])
+    if not status:
+        return
     parse_output(res, status.stdout, "linux")
 
 
@@ -138,8 +150,10 @@ def format_ratio(value, base):
     """Format value and its ratio to base."""
     v = to_int(value)
     b = to_int(base)
-    if v < 0 or b <= 0:
-        return "--"  # return str(value)
+    if v < 0:
+        return "--"
+    if b <= 0:
+        return str(value)
     return f"{v} ({v / b:.3f})"
 
 

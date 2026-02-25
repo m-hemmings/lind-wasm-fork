@@ -132,7 +132,7 @@ pub fn sc_convert_path_to_host(
     let relpath = normpath(convpath(path), path_arg_cageid);
     let relative_path = match relpath.to_str() {
         Some(s) => s,
-        None => return Err(Errno::EINVA as i32),
+        None => return Err(Errno::EINVAL as i32),
     };
 
     // Check if exceeds the max path

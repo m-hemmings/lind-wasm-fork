@@ -1369,11 +1369,11 @@ pub extern "C" fn link_syscall(
     // Type conversion
     let oldpath = match sc_convert_path_to_host(oldpath_arg, oldpath_cageid, cageid) {
         Ok(oldpath) => oldpath,
-        Err(err) => return -err,
+        Err(errno) => return -errno,
     };
     let newpath = match sc_convert_path_to_host(newpath_arg, newpath_cageid, cageid) {
         Ok(newpath) => newpath,
-        Err(err) => return -err,
+        Err(errno) => return -errno,
     };
 
     // Validate unused args
@@ -1432,7 +1432,7 @@ pub extern "C" fn stat_syscall(
     // Type conversion
     let path = match sc_convert_path_to_host(path_arg, path_cageid, cageid) {
         Ok(path) => path,
-        Err(err) => return -err,
+        Err(errno) => return -errno,
     };
 
     // Validate unused args
@@ -1506,7 +1506,7 @@ pub extern "C" fn statfs_syscall(
     // Type conversion
     let path = match sc_convert_path_to_host(path_arg, path_cageid, cageid) {
         Ok(path) => path,
-        Err(err) => return -err,
+        Err(errno) => return -errno,
     };
 
     // Validate unused args
@@ -1767,7 +1767,7 @@ pub extern "C" fn readlink_syscall(
     // Type conversion
     let path = match sc_convert_path_to_host(path_arg, path_cageid, cageid) {
         Ok(path) => path,
-        Err(err) => return -err,
+        Err(errno) => return -errno,
     };
     let buf = buf_arg as *mut u8;
     let buflen = sc_convert_sysarg_to_usize(buflen_arg, buflen_cageid, cageid);
@@ -1835,7 +1835,7 @@ pub extern "C" fn readlinkat_syscall(
     let virtual_fd = sc_convert_sysarg_to_i32(dirfd_arg, dirfd_cageid, cageid);
     let path = match sc_convert_path_to_host(path_arg, path_cageid, cageid) {
         Ok(path) => path,
-        Err(err) => return -err,
+        Err(errno) => return -errno,
     };
     let buf = sc_convert_to_cchar_mut(buf_arg, buf_cageid, cageid);
     let buflen = sc_convert_sysarg_to_usize(buflen_arg, buflen_cageid, cageid);
@@ -1916,11 +1916,11 @@ pub extern "C" fn rename_syscall(
     // Type conversion
     let oldpath = match sc_convert_path_to_host(oldpath_arg, oldpath_cageid, cageid) {
         Ok(path) => path,
-        Err(err) => return -err,
+        Err(errno) => return -errno,
     };
     let newpath = match sc_convert_path_to_host(newpath_arg, newpath_cageid, cageid) {
         Ok(path) => path,
-        Err(err) => return -err,
+        Err(errno) => return -errno,
     };
 
     // Validate unused args

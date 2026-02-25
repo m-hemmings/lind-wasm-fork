@@ -4,6 +4,7 @@
 //! user's perspective to host's perspective
 use crate::cage_helpers::validate_cageid;
 use cage::get_cage;
+pub use libc::*;
 pub use std::env;
 pub use std::ffi::{CStr, CString};
 pub use std::path::{Component, PathBuf};

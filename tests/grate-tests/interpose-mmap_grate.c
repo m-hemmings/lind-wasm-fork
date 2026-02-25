@@ -37,7 +37,7 @@ int mmap_grate(uint64_t cageid,
          getpid(), cageid);
   int self_grate_id = getpid();
   int ret = make_threei_call(
-    9, // syscallnum for register_handler
+    9, // syscallnum for mmap
     0,    // callname is not used in the trampoline, set to 0
     self_grate_id,    // self_grate_id is not used in the trampoline, set to 0
     self_grate_id,    // target_cageid is not used in the trampoline, set to 0

@@ -897,9 +897,8 @@ pub extern "C" fn epoll_wait_syscall(
     //   kernel to host buffer (underfd) --> translate to guest buffer (vfd).
     let mut events = unsafe { std::slice::from_raw_parts_mut(events_ptr, maxevents as usize) };
 
-    let mut kernel_events: Vec<libc::epoll_event> = Vec::with_capacity(maxevents as usize);
-    // Should always be null value before we call libc::epoll_wait
-    kernel_events.push(libc::epoll_event { events: 0, u64: 0 });
+    let mut kernel_events: Vec<libc::epoll_event> =
+        vec![libc::epoll_event { events: 0, u64: 0 }; maxevents as usize];
 
     if maxevents != 0 {
         let start_time = starttimer();

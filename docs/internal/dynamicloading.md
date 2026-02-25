@@ -4,7 +4,6 @@
 Dynamic loading reduces the memory footprint by allowing libraries to be loaded only when needed, rather than linking them statically at compile time. It also eliminates the need to recompile the application when a dependent library changes, provided the interface remains compatible. Additonally, in the applications we test, libraries are loaded at runtime using `dlopen()` and `dlsym()`. Therefore, to correctly support these applications, dynamic loading functionality is required.
 
 ## Design Decisions
-### How Dynamic Loading works in Linux
 
 When a program is executed on Linux, the kernel creates a new process image using execve() and maps the ELF executable into the process’s virtual address space. For statically linked binaries, the kernel sets up the stack and auxiliary data structures and transfers control directly to the program’s entry point. For dynamically linked binaries, the ELF header contains a PT_INTERP segment specifying the dynamic loader (typically `/lib64/ld-linux-x86-64.so.2`). The kernel maps this loader into the same process, transfers control to it, and the loader then loads required shared libraries, resolves symbols, performs relocations, and finally jumps to the program entry point. Crucially, the dynamic loader and the main executable share the same virtual address space and execute within the same process; the loader is not a separate process.
 
@@ -12,14 +11,15 @@ In contrast, WebAssembly (WASM) binaries are not executed directly by the operat
 
 In the Lind system, dynamic loading support is implemented by extending Wasmtime’s parsing and instantiation mechanisms. Calls such as `dlopen`, `dlsym`, and `dlclose` from glibc are redirected to runtime-provided implementations. The runtime then loads additional WASM modules, allocates memory, resolves symbols, and performs relocation handling—all within the sandboxed environment. Integrating the dynamic loader inside the runtime is necessary because WebAssembly linking requires direct, synchronous modification of internal runtime state, such as function tables and memory bounds, which an external process cannot access without prohibitive serialization overhead. Keeping the dynamic loader internal also avoids the latency of inter-process communication, ensuring that module instantiation remains fast, secure, and fully within the trusted computing base.
 
-## Current Status
+## Current Implementation Status
 Have implemented dynamic loading support in Wasmtime. For applications that are compiled as dynamically linked executables or shared libraries, we are able to support both capabilities below:
 1. Launch the application while injecting all required dependent libraries using the `--preload` option (similar to `LD_PRELOAD`).
 2. Ensure that `dlopen()`, `dlsym()`, and `dlclose()` are properly resolved at runtime and corresponding libraries loaded.
 
 	  
 ## Additional Features to be added:
-Support for fork, threads and signals within the shared libraries have to be added.
+1. Support for fork, threads and signals within the shared libraries have to be added.
+2. Should be integrated with lind-boot
 	  
 ## Changes made to implement dynamic loading:
 

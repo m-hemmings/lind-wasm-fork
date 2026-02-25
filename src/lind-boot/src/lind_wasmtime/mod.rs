@@ -1,3 +1,4 @@
+pub mod environ;
 pub mod execute;
 pub mod host;
 pub mod trampoline;

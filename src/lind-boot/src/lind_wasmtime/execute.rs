@@ -1,4 +1,9 @@
-use crate::{cli::CliOptions, lind_wasmtime::host::HostCtx, lind_wasmtime::trampoline::*};
+use crate::{
+    cli::CliOptions,
+    lind_wasmtime::environ::{self as lind_environ, LindEnviron},
+    lind_wasmtime::host::HostCtx,
+    lind_wasmtime::trampoline::*,
+};
 use anyhow::{Context, Result, anyhow, bail};
 use cage::signal::{lind_signal_init, signal_may_trigger};
 use cfg_if::cfg_if;
@@ -8,9 +13,8 @@ use std::ptr::NonNull;
 use std::sync::Arc;
 use sysdefs::constants::lind_platform_const::{RAWPOSIX_CAGEID, WASMTIME_CAGEID};
 use threei::threei_const;
-use wasi_common::sync::WasiCtxBuilder;
 use wasmtime::{
-    AsContextMut, Engine, Func, InstantiateType, Linker, Module, Precompiled, Store, Val, ValType,
+    AsContextMut, Engine, Func, InstantiateType, Linker, Module, Store, Val, ValType,
     WasmBacktraceDetails,
 };
 use wasmtime_lind_3i::{VmCtxWrapper, init_vmctx_pool, rm_vmctx, set_vmctx, set_vmctx_thread};
@@ -107,10 +111,7 @@ pub fn execute_wasmtime(lindboot_cli: CliOptions) -> anyhow::Result<Vec<Val>> {
             lind_manager.wait();
         }
         Err(e) => {
-            // Exit the process if Wasmtime understands the error;
-            // otherwise, fall back on Rust's default error printing/return
-            // code.
-            return Err(wasi_common::maybe_exit_on_error(e));
+            return Err(e);
         }
     }
 
@@ -281,49 +282,18 @@ fn attach_api(
     lindboot_cli: CliOptions,
     cageid: Option<i32>,
 ) -> Result<()> {
-    // Setup WASI-p1
-    // --- Why we still attach a WASI preview1 context (WasiCtx) even though we don't use wasi-libc ---
-    //
-    // Our guest is linked with our customized glibc, whose startup path still follows a WASI-style ABI
-    // for *process metadata* (argv/environ). Concretely, our glibc crt1 `_start` expands to:
-    //
-    //   _start()
-    //     -> __wasi_initialize_environ()
-    //          -> __wasi_environ_sizes_get()
-    //          -> __wasi_environ_get()
-    //     -> __main_void()
-    //          -> __wasi_args_sizes_get()
-    //          -> __wasi_args_get()
-    //     -> main(argc, argv, environ)
-    //
-    // The functions __wasi_* above are thin wrappers around imported WASI preview1 symbols:
-    //
-    //   __imported_wasi_snapshot_preview1_args_sizes_get  (import "wasi_snapshot_preview1" "args_sizes_get")
-    //   __imported_wasi_snapshot_preview1_args_get        (import "wasi_snapshot_preview1" "args_get")
-    //   __imported_wasi_snapshot_preview1_environ_sizes_get (import "wasi_snapshot_preview1" "environ_sizes_get")
-    //   __imported_wasi_snapshot_preview1_environ_get       (import "wasi_snapshot_preview1" "environ_get")
-    //
-    // Therefore, even if we bypass wasi-libc and implement syscalls via glibc/RawPOSIX,
-    // the guest still expects the *WASI preview1 argument and environment APIs* to exist,
-    // otherwise argc/argv/environ cannot be initialized during crt startup (argv[i] becomes NULL,
-    // environ becomes empty, or the module traps if the imports are missing).
-    //
-    // The following two steps are required:
-    //   1) Add WASI preview1 functions to the Wasmtime linker (so the imports resolve).
-    //   2) Populate a WasiCtx as the backing store for argv/env/std{in,out,err}, so that
-    //      args_get/environ_get return meaningful data.
-    //
-    // Note: This is about process metadata plumbing. Our "real" syscalls are still handled
-    // by glibc/RawPOSIX.
-    let _ = wasi_common::sync::add_to_linker(&mut linker, |s: &mut HostCtx| {
-        AsMut::<wasi_common::WasiCtx>::as_mut(s)
-    });
-
-    let mut builder = WasiCtxBuilder::new();
-    let _ = builder.inherit_stdio().args(&lindboot_cli.args);
-    builder.inherit_stdin();
-    builder.inherit_stderr();
-    wstore.data_mut().preview1_ctx = Some(builder.build());
+    // Register the 4 WASI preview1 functions our glibc crt1 needs for argv/environ
+    // initialization during _start(). This replaces the full wasi-common crate which
+    // registered ~60 unused functions.
+    lind_environ::add_to_linker(&mut linker, |s: &HostCtx| {
+        s.lind_environ
+            .as_ref()
+            .expect("lind_environ must be initialized")
+    })?;
+    wstore.data_mut().lind_environ = Some(LindEnviron::new(
+        &lindboot_cli.args,
+        &lindboot_cli.vars,
+    ));
 
     // Setup WASI-thread
     let _ =

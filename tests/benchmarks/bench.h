@@ -1,8 +1,10 @@
-// Useful for defining IPC and FS test message sizes.
+// Helper macros for IPC and FS test message sizes.
 #define KiB(x) ((size_t)(x) << 10)
 #define MiB(x) ((size_t)(x) << 20)
 
+// Monotonic timer in nanoseconds for microbenchmarks.
 long long gettimens();
 
-// Prints out the benchmark result in a benchrunner.py friendy format.
-void emit_result(char*, int, long long, int);
+// Print one benchmark row in benchrunner.py's tab-delimited format:
+// <test>\t<param>\t<loops>\t<avg_ns>
+void emit_result(char* test, int param, long long average, int loops);

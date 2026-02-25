@@ -10,6 +10,7 @@ pub use std::ffi::{CStr, CString};
 pub use std::path::{Component, PathBuf};
 use std::str::Utf8Error;
 pub use std::{mem, ptr};
+use sysdefs::constants::err_const::Errno;
 pub use sysdefs::constants::lind_platform_const::PATH_MAX;
 pub use sysdefs::constants::{err_const, fs_const};
 
@@ -125,13 +126,13 @@ pub fn sc_convert_path_to_host(
 
     let path = match get_cstr(path_arg) {
         Ok(path) => path,
-        Err(e) => return Err(libc::EFAULT),
+        Err(e) => return Err(Errno::EFAULT as i32),
     };
     // We will create a new variable in host process to handle the path value
     let relpath = normpath(convpath(path), path_arg_cageid);
     let relative_path = match relpath.to_str() {
         Some(s) => s,
-        None => return Err(libc::EINVAL),
+        None => return Err(Errno::EINVA as i32),
     };
 
     // Check if exceeds the max path
@@ -147,6 +148,6 @@ pub fn sc_convert_path_to_host(
     let full_path = relative_path.to_string();
     match CString::new(full_path) {
         Ok(c_path) => Ok(c_path),
-        Err(_) => return Err(libc::EINVAL),
+        Err(_) => return Err(Errno::EINVAL as i32),
     }
 }

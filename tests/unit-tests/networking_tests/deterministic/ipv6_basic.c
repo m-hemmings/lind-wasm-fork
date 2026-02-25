@@ -73,12 +73,15 @@ int main(void) {
     assert(n == (ssize_t)strlen(msg));
     assert(memcmp(buf, msg, strlen(msg)) == 0);
 
-    /* getpeername on client */
+    /* getpeername on client — verify full address not truncated */
     struct sockaddr_in6 pn = {0};
     socklen_t pnlen = sizeof(pn);
     assert(getpeername(cli, (struct sockaddr *)&pn, &pnlen) == 0);
+    assert(pnlen == sizeof(struct sockaddr_in6));
     assert(pn.sin6_family == AF_INET6);
     assert(ntohs(pn.sin6_port) == PORT);
+    /* Verify full 16-byte sin6_addr (::ffff:127.0.0.1 mapped address) */
+    assert(memcmp(&pn.sin6_addr, mapped, 16) == 0);
 
     /* IPv6 UDP socket */
     int udp = socket(AF_INET6, SOCK_DGRAM, 0);

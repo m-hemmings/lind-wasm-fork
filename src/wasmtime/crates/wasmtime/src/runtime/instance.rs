@@ -389,6 +389,11 @@ impl Instance {
         //
         // global[1] is __tls_base by LLVM/wasm-ld convention for wasm32 shared-
         // memory modules compiled with -matomics -mbulk-memory.
+        // References:
+        //   - LLVM commit implementing __tls_base:
+        //     https://github.com/llvm/llvm-project/commit/42bba4b852b1a63db4043798bba7d9fcea61cbaf
+        //   - WebAssembly tool-conventions TLS segment / __tls_base documentation:
+        //     https://github.com/WebAssembly/tool-conventions/blob/main/Linking.md
         let tls_global_idx = GlobalIndex::from_u32(1);
         if is_first {
             let handle = store.0.instance_mut(instanceid);

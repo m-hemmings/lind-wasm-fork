@@ -58,7 +58,7 @@ pub fn add_to_linker<T: Clone + Send + Sync + 'static>(
     get_cx: impl Fn(&T) -> &LindEnviron + Send + Sync + Copy + 'static,
 ) -> anyhow::Result<()> {
     linker.func_wrap(
-        "wasi_snapshot_preview1",
+        "lind",
         "args_sizes_get",
         move |caller: Caller<'_, T>, ptr_argc: i32, ptr_buf_size: i32| -> i32 {
             let cx = get_cx(caller.data());
@@ -74,7 +74,7 @@ pub fn add_to_linker<T: Clone + Send + Sync + 'static>(
     )?;
 
     linker.func_wrap(
-        "wasi_snapshot_preview1",
+        "lind",
         "args_get",
         move |caller: Caller<'_, T>, argv_ptrs: i32, argv_buf: i32| -> i32 {
             let cx = get_cx(caller.data());
@@ -96,7 +96,7 @@ pub fn add_to_linker<T: Clone + Send + Sync + 'static>(
     )?;
 
     linker.func_wrap(
-        "wasi_snapshot_preview1",
+        "lind",
         "environ_sizes_get",
         move |caller: Caller<'_, T>, ptr_count: i32, ptr_buf_size: i32| -> i32 {
             let cx = get_cx(caller.data());
@@ -116,7 +116,7 @@ pub fn add_to_linker<T: Clone + Send + Sync + 'static>(
     )?;
 
     linker.func_wrap(
-        "wasi_snapshot_preview1",
+        "lind",
         "environ_get",
         move |caller: Caller<'_, T>, env_ptrs: i32, env_buf: i32| -> i32 {
             let cx = get_cx(caller.data());

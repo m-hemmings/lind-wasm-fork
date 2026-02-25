@@ -66,26 +66,26 @@ To support this, lind-wasm must be able to:
 
 ### Execution Scenarios Requiring Runtime Lookup
 
-#### 1. Process-like Operations (`fork`, `exec`, `exit`)
+#### 1. Process Operations (`fork`, `exec`, `exit`)
 
-Operations such as fork, exec, and exit require Wasmtime instances to be created, cloned, or destroyed. However, the logic that performs the semantic handling of these operations may execute in a different cage or grate than the one that originally issued the system call.
+Operations such as fork, exec, and exit manipulate the lifetime of Wasmtime instances: they create, replace, or terminate cage execution states. The semantic handling of these operations is performed in RawPOSIX and may execute in a different cage or grate than the one that originally issued the system call.
 
-After RawPOSIX completes the semantic work, control must return to Wasmtime, not necessarily to the instance that initiated the call.
-As a result, lind-3i cannot rely on an implicit “current” runtime state. Instead, it must explicitly retrieve the correct execution context:
+After RawPOSIX completes the semantic operation, control must resume in a Wasmtime instance corresponding to the target cage state, which is not necessarily the same instance that initiated the call.
 
-For `fork`, `exec`, and `exit`, these operations conceptually create, replace, or terminate the execution state of a process. After RawPOSIX completes the semantic handling, lind-wasm must resume execution in a Wasmtime instance associated with an *arbitrary* `cage_id`, which may differ from the calling cage. The appropriate runtime context is therefore retrieved by directly looking up the execution context associated with the target `cage_id`.
+Because of this redirection semantics, lind-wasm cannot rely on an implicit “current” runtime state. Instead, it explicitly retrieves the correct execution context by looking up the Wasmtime instance associated with the target `(cage_id, thread_id)`.
 
-#### 2. Thread-like Operations
+#### 2. Thread Operations
 
-Thread operations introduce additional execution contexts within the same cage. These contexts are not part of the main execution flow and cannot be recovered via a global “current” state. Instead, lind-wasm explicitly looks up the runtime context associated with the corresponding `(cage_id, tid)` pair, ensuring correct control-flow transfer during thread creation, scheduling, and termination.
+Each thread within the same cage has distinct instance. These thread contexts are independent from the main execution flow and cannot be recovered via a global “current” runtime state.
+
+During thread creation and termination, lind-wasm explicitly identifies the appropriate runtime context by looking up the corresponding `(cage_id, tid)` pair. This ensures that control-flow transfer occurs in the correct Wasmtime instance and prevents Asyncify data mismatch.
 
 #### 3. Grate Calls (Cross-Module Execution Transfers)
 
 Grate calls represent explicit execution jumps between Wasm modules, such as:
 
-- Cage → Grate
-- Grate → RawPOSIX
-- Grate → Grate
+- Cage / Grate -> Cage / Grate
+- Cage / Grate -> RawPOSIX
 
 These jumps are not standard Wasm function calls and cannot rely on a shared call stack or `Store`. Supporting them requires the ability to (1) locate a runtime state belonging to a different module, and (2) re-enter Wasm execution from outside the original stack frame.
 
@@ -103,7 +103,11 @@ pub struct VmCtxWrapper {
 }
 ```
 
-Lind-Wasm maintains two global, per-cage pools of `VMContext` pointers:
+In the three execution scenarios described earlier, both process operations and thread operations must be bound to the exact instance that issued the call, even though we're resuming after the control comes back to wasmtime. This is because their execution depends on precise pairing semantics, and preemptively backing up state and arbitrarily reusing it may lead to mismatches similar to Asyncify state inconsistencies. This requires storing and resuming can only happens at the time when the call has been issued, not before, to get latest Asyncify status.
+
+In contrast, grate calls do not rely on such strict Asyncify pairing to execute correctly. A grate call only requires extracting the corresponding execution context and expanding the current call stack. Therefore, its correctness does not depend on binding the call to a specific originating instance in the same way process and thread operations do. This distinction enables a different concurrency strategy. For ordinary grate calls, we can preemptively back up grate instances when the grate starts running and reuse them to serve concurrent grate call requests. Since grate calls do not depend on strict instance-level pairing, this approach does not introduce state inconsistency.
+
+To simultaneously preserve the process/thread semantics required by lind-wasm while improving the concurrency capability of grate calls, Lind-Wasm maintains two global, per-cage pools of `VMContext` pointers:
 
 #### 1. General execution context lookup table
 
@@ -111,7 +115,7 @@ The global `VMCTX_QUEUES` structure primarily manages execution contexts for the
 
 Importantly, table slots are never removed from the global pool. Instead, the *slot contents (the queue)* of each slot may be inserted or removed over time. When a cage terminates, its corresponding queue slot remains present, but its slot content is cleared and set to `None`.
 
-This design ensures that each table index always directly corresponds to a `cage_id`, eliminating the need for dynamic index management or lookup structures. As a result, `cage_id` can be used as a stable, constant-time index into the pool, reducing lookup overhead and avoiding additional search or indirection costs.
+This design ensures that each table index always directly corresponds to a `cage_id`, eliminating the need for dynamic index management or lookup structures. While a single additional lookup may appear negligible, context resolution lies on the hot path of every grate call. Since cross-cage invocation requires resolving the target execution context on each request, even small per-call overheads accumulate under high request rates.
 
 ```rust
 static VMCTX_QUEUES: OnceLock<Vec<Mutex<VecDeque<VmCtxWrapper>>>>;
@@ -128,6 +132,12 @@ static VMCTX_THREADS: OnceLock<Vec<Mutex<HashMap<u64, VmCtxWrapper>>>>;
 ---
 
 ### Execution Flow
+
+To support intercage interposition without modifying the underlying kernel or Wasmtime runtime, 3i provides a user-space dispatch layer that enables system calls to be redirected across cages and grates. This mechanism allows a syscall issued in one Wasm instance (cage A) to be handled by another Wasm instance (grate B), while preserving isolation.
+
+Unlike traditional in-process function calls, cross-cage invocation cannot rely on an implicit "current instance" assumption. Instead, 3i must explicitly identify and re-enter the correct Wasmtime execution context associated with the target cage.
+
+The following execution flow illustrates how syscalls and grate calls are dispatched:
 
 ![System call and grate execution flow](../images/doc-images/syscall_flow_diagram.svg)
 

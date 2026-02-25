@@ -80,7 +80,7 @@ pub extern "C" fn open_syscall(
     // Type conversion
     let path = match sc_convert_path_to_host(path_arg, path_cageid, cageid) {
         Ok(path) => path,
-        Err(errno) => return -errno,
+        Err(e) => return syscall_error(e, "open", "path conversion failed"),
     };
     // Note the cageid here isn't really relevant because the argument is pass-by-value.
     // But it could be checked to ensure it's not set to something unexpected.
@@ -381,7 +381,7 @@ pub extern "C" fn mkdir_syscall(
     // Type conversion
     let path = match sc_convert_path_to_host(path_arg, path_arg_cageid, cageid) {
         Ok(path) => path,
-        Err(errno) => return -errno,
+        Err(e) => return syscall_error(e, "mkdir", "path conversion failed"),
     };
     // Note the cageid here isn't really relevant because the argument is pass-by-value.
     // But it could be checked to ensure it's not set to something unexpected.
@@ -1374,11 +1374,11 @@ pub extern "C" fn link_syscall(
     // Type conversion
     let oldpath = match sc_convert_path_to_host(oldpath_arg, oldpath_cageid, cageid) {
         Ok(oldpath) => oldpath,
-        Err(errno) => return -errno,
+        Err(e) => return syscall_error(e, "link", "path conversion failed"),
     };
     let newpath = match sc_convert_path_to_host(newpath_arg, newpath_cageid, cageid) {
         Ok(newpath) => newpath,
-        Err(errno) => return -errno,
+        Err(e) => return syscall_error(e, "link", "path conversion failed"),
     };
 
     // Validate unused args
@@ -1437,7 +1437,7 @@ pub extern "C" fn stat_syscall(
     // Type conversion
     let path = match sc_convert_path_to_host(path_arg, path_cageid, cageid) {
         Ok(path) => path,
-        Err(errno) => return -errno,
+        Err(e) => return syscall_error(e, "stat", "path conversion failed"),
     };
 
     // Validate unused args
@@ -1511,7 +1511,7 @@ pub extern "C" fn statfs_syscall(
     // Type conversion
     let path = match sc_convert_path_to_host(path_arg, path_cageid, cageid) {
         Ok(path) => path,
-        Err(errno) => return -errno,
+        Err(e) => return syscall_error(e, "statfs", "path conversion failed"),
     };
 
     // Validate unused args
@@ -1772,7 +1772,7 @@ pub extern "C" fn readlink_syscall(
     // Type conversion
     let path = match sc_convert_path_to_host(path_arg, path_cageid, cageid) {
         Ok(path) => path,
-        Err(errno) => return -errno,
+        Err(e) => return syscall_error(e, "readlink", "path conversion failed"),
     };
     let buf = buf_arg as *mut u8;
     let buflen = sc_convert_sysarg_to_usize(buflen_arg, buflen_cageid, cageid);
@@ -1840,7 +1840,7 @@ pub extern "C" fn readlinkat_syscall(
     let virtual_fd = sc_convert_sysarg_to_i32(dirfd_arg, dirfd_cageid, cageid);
     let path = match sc_convert_path_to_host(path_arg, path_cageid, cageid) {
         Ok(path) => path,
-        Err(errno) => return -errno,
+        Err(e) => return syscall_error(e, "readlinkat", "path conversion failed"),
     };
     let buf = sc_convert_to_cchar_mut(buf_arg, buf_cageid, cageid);
     let buflen = sc_convert_sysarg_to_usize(buflen_arg, buflen_cageid, cageid);
@@ -1921,11 +1921,11 @@ pub extern "C" fn rename_syscall(
     // Type conversion
     let oldpath = match sc_convert_path_to_host(oldpath_arg, oldpath_cageid, cageid) {
         Ok(path) => path,
-        Err(errno) => return -errno,
+        Err(e) => return syscall_error(e, "rename", "path conversion failed"),
     };
     let newpath = match sc_convert_path_to_host(newpath_arg, newpath_cageid, cageid) {
         Ok(path) => path,
-        Err(errno) => return -errno,
+        Err(e) => return syscall_error(e, "rename", "path conversion failed"),
     };
 
     // Validate unused args
@@ -1982,7 +1982,7 @@ pub extern "C" fn unlink_syscall(
     // Type conversion
     let path = match sc_convert_path_to_host(path_arg, path_cageid, cageid) {
         Ok(path) => path,
-        Err(errno) => return -errno,
+        Err(e) => return syscall_error(e, "unlink", "path conversion failed"),
     };
 
     // would sometimes check, sometimes be a no-op depending on the compiler settings
@@ -2071,7 +2071,7 @@ pub extern "C" fn unlinkat_syscall(
         // into an absolute path within the chroot jail.
         c_path = match sc_convert_path_to_host(pathname_arg, pathname_cageid, cageid) {
             Ok(path) => path,
-            Err(errno) => return -errno,
+            Err(e) => return syscall_error(e, "unlinkat", "path conversion failed"),
         };
         AT_FDCWD
     } else {
@@ -2131,7 +2131,7 @@ pub extern "C" fn access_syscall(
     // Type conversion
     let path = match sc_convert_path_to_host(path_arg, path_cageid, cageid) {
         Ok(path) => path,
-        Err(errno) => return -errno,
+        Err(e) => return syscall_error(e, "access", "path conversion failed"),
     };
     let amode = sc_convert_sysarg_to_i32(amode_arg, amode_cageid, cageid);
 
@@ -3015,7 +3015,7 @@ pub extern "C" fn chdir_syscall(
     // Type conversion
     let path = match sc_convert_path_to_host(path_arg, path_cageid, cageid) {
         Ok(path) => path,
-        Err(errno) => return -errno,
+        Err(e) => return syscall_error(e, "chdir", "path conversion failed"),
     };
 
     // would sometimes check, sometimes be a no-op depending on the compiler settings
@@ -3084,7 +3084,7 @@ pub extern "C" fn rmdir_syscall(
     // Type conversion
     let path = match sc_convert_path_to_host(path_arg, path_cageid, cageid) {
         Ok(path) => path,
-        Err(errno) => return -errno,
+        Err(e) => return syscall_error(e, "rmdir", "path conversion failed"),
     };
 
     // would sometimes check, sometimes be a no-op depending on the compiler settings
@@ -3148,7 +3148,7 @@ pub extern "C" fn chmod_syscall(
     // Type conversion
     let path = match sc_convert_path_to_host(path_arg, path_cageid, cageid) {
         Ok(path) => path,
-        Err(errno) => return -errno,
+        Err(e) => return syscall_error(e, "chmod", "path conversion failed"),
     };
     let mode = sc_convert_sysarg_to_u32(mode_arg, mode_cageid, cageid);
 
@@ -3352,7 +3352,7 @@ pub extern "C" fn truncate_syscall(
     // Type conversion
     let path = match sc_convert_path_to_host(path_arg, path_cageid, cageid) {
         Ok(path) => path,
-        Err(errno) => return -errno,
+        Err(e) => return syscall_error(e, "truncate", "path conversion failed"),
     };
     let length = sc_convert_sysarg_to_i64(length_arg, length_cageid, cageid);
 

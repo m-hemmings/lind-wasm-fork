@@ -116,7 +116,7 @@ pub fn sc_convert_path_to_host(
     path_arg: u64,
     path_arg_cageid: u64,
     cageid: u64,
-) -> Result<CString, i32> {
+) -> Result<CString, Errno> {
     #[cfg(feature = "secure")]
     {
         if !validate_cageid(path_arg_cageid, cageid) {
@@ -126,20 +126,20 @@ pub fn sc_convert_path_to_host(
 
     let path = match get_cstr(path_arg) {
         Ok(path) => path,
-        Err(e) => return Err(Errno::EFAULT as i32),
+        Err(_) => return Err(Errno::EFAULT),
     };
     // We will create a new variable in host process to handle the path value
     let relpath = normpath(convpath(path), path_arg_cageid);
     let relative_path = match relpath.to_str() {
         Some(s) => s,
-        None => return Err(Errno::EINVAL as i32),
+        None => return Err(Errno::EINVAL),
     };
 
     // Check if exceeds the max path
     #[cfg(feature = "secure")]
     {
         if relative_path.len() >= PATH_MAX {
-            return Err(Errno::ENAMETOOLONG as i32);
+            return Err(Errno::ENAMETOOLONG);
         }
     }
 
@@ -148,6 +148,6 @@ pub fn sc_convert_path_to_host(
     let full_path = relative_path.to_string();
     match CString::new(full_path) {
         Ok(c_path) => Ok(c_path),
-        Err(_) => return Err(Errno::EINVAL as i32),
+        Err(_) => return Err(Errno::EINVAL),
     }
 }

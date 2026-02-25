@@ -92,7 +92,7 @@ Clamping is used when an ancestor grate needs structural control over how a desc
 For example:
 
 ```
-lind namespace-grate --clamp imfs-grate --path /tmp -- python script.py
+lind namespace-grate imfs-grate --path /tmp -- python script.py
 ```
 
 Here, the namespace grate controls filesystem routing for the python cage. Paths under `/tmp` are routed to the IMFS grate, which implements an in-memory filesystem, while other paths continue through normal routing toward RawPOSIX.

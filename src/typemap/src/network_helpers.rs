@@ -108,8 +108,8 @@ pub fn convert_host_sockaddr(
 ///
 /// This function is used to update sockaddr info after kernel syscalls (ie: accept)
 pub unsafe fn copy_out_sockaddr(
-    dst_user: *mut SockAddr,        // User buffer (may be sockaddr_in, sockaddr_in6, etc.)
-    dst_len_ptr: *mut socklen_t,    // in: buffer size, out: actual length
+    dst_user: *mut SockAddr, // User buffer (may be sockaddr_in, sockaddr_in6, etc.)
+    dst_len_ptr: *mut socklen_t, // in: buffer size, out: actual length
     src_storage: &sockaddr_storage, // source addr (libc::sockaddr)
 ) {
     if dst_user.is_null() || dst_len_ptr.is_null() {
@@ -135,11 +135,7 @@ pub unsafe fn copy_out_sockaddr(
     let copy_bytes = core::cmp::min(actual_len, user_buf_len) as usize;
 
     if copy_bytes > 0 {
-        ptr::copy_nonoverlapping(
-            sa_ptr as *const u8,
-            dst_user as *mut u8,
-            copy_bytes,
-        );
+        ptr::copy_nonoverlapping(sa_ptr as *const u8, dst_user as *mut u8, copy_bytes);
     }
 
     // Write back the "actual length" per Linux semantics.

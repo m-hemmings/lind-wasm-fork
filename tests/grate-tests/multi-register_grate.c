@@ -81,7 +81,7 @@ int main(int argc, char *argv[]) {
                "grate %d with fn ptr addr: %llu\n",
                cageid, grateid, fn_ptr_addr_geteuid);
         // geteuid syscallnum=107
-        register_handler(cageid, 107, 1, grateid, fn_ptr_addr_geteuid);
+        register_handler(cageid, 107, grateid, fn_ptr_addr_geteuid);
         // Set the geteuid (syscallnum=107) of this cage to call this grate
         // function geteuid_grate (func index=0) Syntax of register_handler:
         // <targetcage, targetcallnum, handlefunc_flag (deregister(0) or register
@@ -91,7 +91,7 @@ int main(int argc, char *argv[]) {
                "grate %d with fn ptr addr: %llu\n",
                cageid, grateid, fn_ptr_addr_getuid);
         // getuid syscallnum=102
-        register_handler(cageid, 102, 1, grateid, fn_ptr_addr_getuid);
+        register_handler(cageid, 102, grateid, fn_ptr_addr_getuid);
       }
 
       if (execv(argv[i], &argv[i]) == -1) {
@@ -102,18 +102,14 @@ int main(int argc, char *argv[]) {
   }
 
   int status;
-  int failed = 0;
+
   while (wait(&status) > 0) {
     if (status != 0) {
       fprintf(stderr, "[Grate|multi-register] FAIL: child exited with status %d\n", status);
-      failed = 1;
+      return EXIT_FAILURE;
     }
   }
 
-  if (failed) {
-    fprintf(stderr, "[Grate|multi-register] FAIL\n");
-    return EXIT_FAILURE;
-  }
   printf("[Grate|multi-register] PASS\n");
   return 0;
 }

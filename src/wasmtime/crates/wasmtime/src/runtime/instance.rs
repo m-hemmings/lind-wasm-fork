@@ -16,6 +16,7 @@ use core::ptr::NonNull;
 use sysdefs::constants::fs_const::{
     MAP_ANONYMOUS, MAP_FIXED, MAP_PRIVATE, PAGESHIFT, PROT_READ, PROT_WRITE,
 };
+use sysdefs::constants::lind_platform_const;
 use threei::threei::make_syscall;
 use wasmparser::WasmFeatures;
 use wasmtime_environ::{

@@ -13,25 +13,22 @@ int main(void) {
     if (p == MAP_FAILED) {
         perror("mmap");
         assert(0);
-        return 1;
     }
 
-    // p[0]       = 0xAB;
-    // p[len/2]   = 0xCD;
-    // p[len - 1] = 0xEF;
+    p[0]       = 0xAB;
+    p[len/2]   = 0xCD;
+    p[len - 1] = 0xEF;
 
-    // if (p[0] != 0xAB || p[len/2] != 0xCD || p[len - 1] != 0xEF) {
-    //     fprintf(stderr, "memory check failed\n");
-    //     munmap(p, len);
-    //     assert(0);
-    //     return 2;
-    // }
+    if (p[0] != 0xAB || p[len/2] != 0xCD || p[len - 1] != 0xEF) {
+        fprintf(stderr, "memory check failed\n");
+        munmap(p, len);
+        assert(0);
+    }
 
-    // if (munmap(p, len) != 0) {
-    //     perror("munmap");
-    //     assert(0);
-    //     return 3;
-    // }
+    if (munmap(p, len) != 0) {
+        perror("munmap");
+        assert(0);
+    }
 
     printf("mmap test: PASS\n");
     return 0;

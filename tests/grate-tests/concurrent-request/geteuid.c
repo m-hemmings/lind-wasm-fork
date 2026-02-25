@@ -10,7 +10,6 @@ int main(int argc, char *argv[]) {
         if (ret != 10) {
             fprintf(stderr, "[Cage | geteuid] FAIL: iteration %d, expected 10, got %d\n", i, ret);
             assert(0);
-            exit(EXIT_FAILURE);
         }
     }
     printf("[Cage | geteuid] PASS: 1000000 calls returned %d\n", ret);

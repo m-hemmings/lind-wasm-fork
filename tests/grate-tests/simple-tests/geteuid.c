@@ -8,7 +8,6 @@ int main(int argc, char *argv[]) {
     if (ret != 10) {
         fprintf(stderr, "[Cage | geteuid] FAIL: expected 10, got %d\n", ret);
         assert(0);
-        exit(EXIT_FAILURE);
     }
     printf("[Cage | geteuid] PASS: geteuid ret = %d\n", ret);
     return 0;

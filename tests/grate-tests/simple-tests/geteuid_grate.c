@@ -15,7 +15,7 @@ int pass_fptr_to_wt(uint64_t fn_ptr_uint, uint64_t cageid, uint64_t arg1,
                     uint64_t arg6, uint64_t arg6cage) {
   if (fn_ptr_uint == 0) {
     fprintf(stderr, "[Grate|geteuid] Invalid function ptr\n");
-    return -1;
+    assert(0);
   }
 
   printf("[Grate|geteuid] Handling function ptr: %llu from cage: %llu\n",
@@ -25,9 +25,6 @@ int pass_fptr_to_wt(uint64_t fn_ptr_uint, uint64_t cageid, uint64_t arg1,
 
   return fn(cageid);
 }
-
-// Function ptr and signatures of this grate
-int geteuid_grate(uint64_t);
 
 int geteuid_grate(uint64_t cageid) {
   printf("[Grate|geteuid] In geteuid_grate %d handler for cage: %llu\n",
@@ -41,7 +38,7 @@ int main(int argc, char *argv[]) {
   if (argc < 2) {
     fprintf(stderr, "Usage: %s <cage_file> <grate_file> <cage_file> [...]\n",
             argv[0]);
-    exit(EXIT_FAILURE);
+    assert(0);
   }
 
   int grateid = getpid();
@@ -58,7 +55,7 @@ int main(int argc, char *argv[]) {
     pid_t pid = fork();
     if (pid < 0) {
       perror("fork failed");
-      exit(EXIT_FAILURE);
+      assert(0);
     } else if (pid == 0) {
       // According to input format, the odd-numbered positions will always be
       // grate, and even-numbered positions will always be cage.
@@ -66,18 +63,25 @@ int main(int argc, char *argv[]) {
         // Next one is cage, only set the register_handler when next one is cage
         int cageid = getpid();
         // Set the geteuid (syscallnum=107) of this cage to call this grate
-        // function geteuid_grate (func index=0) Syntax of register_handler:
+        // function geteuid_grate 
+        // Syntax of register_handler:
         // <targetcage, targetcallnum, this_grate_id, fn_ptr_u64)>
         uint64_t fn_ptr_addr = (uint64_t)(uintptr_t)&geteuid_grate;
         printf("[Grate|geteuid] Registering geteuid handler for cage %d in "
                "grate %d with fn ptr addr: %llu\n",
                cageid, grateid, fn_ptr_addr);
         int ret = register_handler(cageid, 107, grateid, fn_ptr_addr);
+        if (ret != 0) {
+            fprintf(stderr, "[Grate|geteuid] Failed to register handler for cage %d in "
+                    "grate %d with fn ptr addr: %llu, ret: %d\n",
+                    cageid, grateid, fn_ptr_addr, ret);
+            assert(0);
+          }
       }
 
       if (execv(argv[i], &argv[i]) == -1) {
         perror("execv failed");
-        exit(EXIT_FAILURE);
+        assert(0);
       }
     }
   }
@@ -88,7 +92,6 @@ int main(int argc, char *argv[]) {
     if (status != 0) {
       fprintf(stderr, "[Grate|geteuid] FAIL: child exited with status %d\n", status);
       assert(0);
-      return EXIT_FAILURE;
     }
   }
 

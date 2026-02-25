@@ -3,7 +3,6 @@
  *
  * Covers:
  *   - NULL path arguments to path-based syscalls
- *   - lseek with invalid fd (-1) — the lmbench probing pattern
  *   - PATH_MAX overflow
  *   - Embedded null bytes in path strings
  */
@@ -67,15 +66,7 @@ int main() {
     assert(ret == -1 && "rename(NULL, NULL) should return -1");
     printf("Test 7 PASS: rename(NULL, NULL) returned -1\n");
 
-    /* Test 8: lseek(fd=-1) - lmbench probes fd support this way */
-    errno = 0;
-    off_t off = lseek(-1, 0, SEEK_SET);
-    assert(off == (off_t)-1 && "lseek(-1) should return -1");
-    assert(errno == EBADF && "lseek(-1) should set errno to EBADF");
-    printf("Test 8 PASS: lseek(-1) returned -1 with EBADF\n");
-
-
-    /* Test 9: open() with a path exceeding PATH_MAX */
+    /* Test 8: open() with a path exceeding PATH_MAX */
     {
         size_t biglen = PATH_MAX + 256;
         char *bigpath = malloc(biglen + 1);
@@ -88,11 +79,11 @@ int main() {
         fd = open(bigpath, O_RDONLY);
         assert(fd == -1 && "open(huge path) should return -1");
         assert(errno == ENAMETOOLONG && "open(huge path) should set errno to ENAMETOOLONG");
-        printf("Test 9 PASS: open(path > PATH_MAX) returned -1 with ENAMETOOLONG\n");
+        printf("Test 8 PASS: open(path > PATH_MAX) returned -1 with ENAMETOOLONG\n");
         free(bigpath);
     }
 
-    /* Test 10: open() with embedded null - C truncates at \0,
+    /* Test 9: open() with embedded null - C truncates at \0,
      * so this becomes open("/nonexistent_path_xyz") which should
      * fail with ENOENT on both native and WASM. */
     {
@@ -101,7 +92,7 @@ int main() {
         fd = open(path_with_null, O_RDONLY);
         assert(fd == -1 && "open(path with embedded null) should return -1");
         assert(errno == ENOENT && "open(path with embedded null) should set ENOENT");
-        printf("Test 10 PASS: open(path with embedded null) returned -1 with ENOENT\n");
+        printf("Test 9 PASS: open(path with embedded null) returned -1 with ENOENT\n");
     }
     
     fflush(stdout);

@@ -9,10 +9,10 @@ use libc::c_void;
 use std::sync::Arc;
 use sysdefs::constants::err_const::{get_errno, handle_errno, syscall_error, Errno};
 use sysdefs::constants::fs_const::{
-    FIOASYNC, FIONBIO, F_GETLK64, F_SETLK64, F_SETLKW64, MAP_ANONYMOUS, MAP_FIXED, MAP_POPULATE,
-    MAP_PRIVATE, MAP_SHARED, O_CLOEXEC, PAGESHIFT, PAGESIZE, PROT_EXEC, PROT_NONE, PROT_READ,
-    PROT_WRITE, SHMMAX, SHMMIN, SHM_DEST, SHM_RDONLY, STDERR_FILENO, STDIN_FILENO, STDOUT_FILENO,
-    TIOCGWINSZ,
+    FIOASYNC, FIONBIO, F_GETLK64, F_SETLK64, F_SETLKW64, IPC_CREAT, IPC_EXCL, MAP_ANONYMOUS,
+    MAP_FIXED, MAP_POPULATE, MAP_PRIVATE, MAP_SHARED, O_CLOEXEC, PAGESHIFT, PAGESIZE, PROT_EXEC,
+    PROT_NONE, PROT_READ, PROT_WRITE, SHMMAX, SHMMIN, SHM_DEST, SHM_RDONLY, STDERR_FILENO,
+    STDIN_FILENO, STDOUT_FILENO, TIOCGWINSZ,
 };
 
 use sysdefs::constants::lind_platform_const::{FDKIND_KERNEL, MAXFD, UNUSED_ARG, UNUSED_ID};
@@ -2065,7 +2065,7 @@ pub extern "C" fn unlinkat_syscall(
 
     let mut c_path;
     // Determine the appropriate kernel file descriptor and pathname conversion based on dirfd.
-    let kernel_fd = if dirfd == AT_FDCWD {
+    let kernel_fd = if dirfd == libc::AT_FDCWD {
         // Case 1: When AT_FDCWD is used.
         // Convert the provided pathname from the RawPOSIX working directory (which is different from the host's)
         // into an absolute path within the chroot jail.
@@ -2073,7 +2073,7 @@ pub extern "C" fn unlinkat_syscall(
             Ok(path) => path,
             Err(errno) => return -errno,
         };
-        AT_FDCWD
+        libc::AT_FDCWD
     } else {
         // Case 2: When a specific directory fd is provided.
         // Translate the virtual file descriptor to the corresponding kernel file descriptor.

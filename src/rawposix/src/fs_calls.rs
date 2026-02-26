@@ -982,7 +982,7 @@ pub extern "C" fn munmap_syscall(
     let mut vmmap = cage.vmmap.write();
 
     let user_addr = vmmap.sys_to_user(rounded_addr) as u32;
-    vmmap.remove_entry(user_addr >> PAGESHIFT, len as u32 >> PAGESHIFT);
+    vmmap.remove_entry(user_addr >> PAGESHIFT, (rounded_length as u32) >> PAGESHIFT);
 
     0
 }
@@ -3487,23 +3487,28 @@ pub extern "C" fn mprotect_syscall(
         return syscall_error(Errno::EINVAL, "mprotect", "PROT_EXEC is not allowed");
     }
 
+    // Round length up to page boundary (mprotect operates on whole pages)
+    let rounded_length = round_up_page(len as u64) as usize;
+
     // Call the kernel mprotect
-    let ret = unsafe { libc::mprotect(addr as *mut c_void, len, prot) };
+    let ret = unsafe { libc::mprotect(addr as *mut c_void, rounded_length, prot) };
     if ret < 0 {
         let errno = get_errno();
         return handle_errno(errno, "mprotect");
     }
 
-    // Update vmmap to reflect the new protection bits
-    let cage = get_cage(cageid).unwrap();
-    let mut vmmap = cage.vmmap.write();
-    let user_addr = vmmap.sys_to_user(addr as usize);
-    let rounded_length = round_up_page(len as u64);
-    vmmap.change_prot(
-        user_addr >> PAGESHIFT,
-        (rounded_length >> PAGESHIFT) as u32,
-        prot,
-    );
+    // Update vmmap to reflect the new protection flags
+    // Skip if length is zero (no pages to update) — Linux treats len=0 as a no-op
+    if rounded_length > 0 {
+        let cage = get_cage(cageid).unwrap();
+        let mut vmmap = cage.vmmap.write();
+        let user_addr = vmmap.sys_to_user(addr as usize) as u32;
+        vmmap.change_prot(
+            user_addr >> PAGESHIFT,
+            (rounded_length >> PAGESHIFT) as u32,
+            prot,
+        );
+    }
 
     ret
 }

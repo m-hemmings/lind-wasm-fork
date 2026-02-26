@@ -9,7 +9,10 @@ use std::sync::Arc;
 use sysdefs::constants::lind_platform_const::{RAWPOSIX_CAGEID, WASMTIME_CAGEID};
 use threei::threei_const;
 use wasi_common::sync::WasiCtxBuilder;
-use wasmtime::{AsContextMut, Engine, Func, InstantiateType, Linker, Module, Store, Val, ValType};
+use wasmtime::{
+    AsContextMut, Engine, Func, InstantiateType, Linker, Module, Precompiled, Store, Val, ValType,
+    WasmBacktraceDetails,
+};
 use wasmtime_lind_3i::{VmCtxWrapper, init_vmctx_pool, rm_vmctx, set_vmctx, set_vmctx_thread};
 use wasmtime_lind_multi_process::{CAGE_START_ID, LindCtx, THREAD_START_ID};
 use wasmtime_lind_utils::LindCageManager;
@@ -46,7 +49,7 @@ pub fn execute_wasmtime(lindboot_cli: CliOptions) -> anyhow::Result<Vec<Val>> {
     // -- Initialize the Wasmtime execution environment --
     let wasm_file_path = Path::new(lindboot_cli.wasm_file());
     let args = lindboot_cli.args.clone();
-    let wt_config = wasmtime::Config::new();
+    let wt_config = make_wasmtime_config(lindboot_cli.wasmtime_backtrace);
     let engine = Engine::new(&wt_config).context("failed to create execution engine")?;
     let host = HostCtx::default();
     let mut wstore = Store::new(&engine, host);
@@ -74,7 +77,7 @@ pub fn execute_wasmtime(lindboot_cli: CliOptions) -> anyhow::Result<Vec<Val>> {
     // -- Load module and Attach host APIs --
     // Set up the WASI. In lind-wasm, we predefine all the features we need are `thread` and `wasipreview1`
     // so we manually add them to the linker without checking the input
-    let module = Module::from_file(&engine, wasm_file_path)?;
+    let module = read_wasm_or_cwasm(&engine, wasm_file_path)?;
     let mut linker = Linker::new(&engine);
 
     attach_api(
@@ -135,7 +138,7 @@ pub fn execute_with_lind(
     // -- Initialize the Wasmtime execution environment --
     let wasm_file_path = Path::new(lind_boot.wasm_file());
     let args = lind_boot.args.clone();
-    let wt_config = wasmtime::Config::new();
+    let wt_config = make_wasmtime_config(lind_boot.wasmtime_backtrace);
     let engine = Engine::new(&wt_config).context("failed to create execution engine")?;
     let host = HostCtx::default();
     let mut wstore = Store::new(&engine, host);
@@ -143,7 +146,7 @@ pub fn execute_with_lind(
     // -- Load module and Attach host APIs --
     // Set up the WASI. In lind-wasm, we predefine all the features we need are `thread` and `wasipreview1`
     // so we manually add them to the linker without checking the input
-    let module = Module::from_file(&engine, wasm_file_path)?;
+    let module = read_wasm_or_cwasm(&engine, wasm_file_path)?;
     let mut linker = Linker::new(&engine);
 
     attach_api(
@@ -191,13 +194,13 @@ fn register_wasmtime_syscall_entry() -> bool {
     let fp_clone = clone_syscall_entry;
     let clone_call_u64: u64 = fp_clone as *const () as usize as u64;
     let clone_ret = threei::register_handler(
-        clone_call_u64,
-        RAWPOSIX_CAGEID,                     // self cageid
+        0,
+        WASMTIME_CAGEID,                     // target cageid for this syscall handler
+        RAWPOSIX_CAGEID,                     // cage to modify: current cageid
         56,                                  // clone syscall number
         threei_const::RUNTIME_TYPE_WASMTIME, // runtime id
-        1,                                   // register
-        WASMTIME_CAGEID,                     // target cageid
-        0,
+        WASMTIME_CAGEID,                     // handler function is in the 3i
+        clone_call_u64,
         0,
         0,
         0,
@@ -211,13 +214,13 @@ fn register_wasmtime_syscall_entry() -> bool {
     let fp_exec = exec_syscall_entry;
     let exec_call_u64: u64 = fp_exec as *const () as usize as u64;
     let exec_ret = threei::register_handler(
-        exec_call_u64,
-        RAWPOSIX_CAGEID,                     // self cageid
+        0,
+        WASMTIME_CAGEID,                     // target cageid for this syscall handler
+        RAWPOSIX_CAGEID,                     // cage to modify: current cageid
         59,                                  // exec syscall number
         threei_const::RUNTIME_TYPE_WASMTIME, // runtime id
-        1,                                   // register
-        WASMTIME_CAGEID,                     // target cageid
-        0,
+        WASMTIME_CAGEID,                     // handler function is in the 3i
+        exec_call_u64,
         0,
         0,
         0,
@@ -231,13 +234,13 @@ fn register_wasmtime_syscall_entry() -> bool {
     let fp_exit = exit_syscall_entry;
     let exit_call_u64: u64 = fp_exit as *const () as usize as u64;
     let exit_ret = threei::register_handler(
-        exit_call_u64,
-        RAWPOSIX_CAGEID,                     // self cageid
+        0,
+        WASMTIME_CAGEID,                     // target cageid for this syscall handler
+        RAWPOSIX_CAGEID,                     // cage to modify: current cageid
         60,                                  // exit syscall number
         threei_const::RUNTIME_TYPE_WASMTIME, // runtime id
-        1,                                   // register
-        WASMTIME_CAGEID,                     // target cageid
-        0,
+        WASMTIME_CAGEID,                     // handler function is in the 3i
+        exit_call_u64,
         0,
         0,
         0,
@@ -488,6 +491,46 @@ fn load_main_module(
     ret
 }
 
+/// AOT-compile a `.wasm` file to a `.cwasm` artifact on disk.
+///
+/// This only needs a Wasmtime `Engine` — no runtime, cages, or 3i. The output
+/// path is the input path with the extension replaced by `.cwasm`.
+pub fn precompile_module(cli: &CliOptions) -> Result<()> {
+    let wasm_path = Path::new(cli.wasm_file());
+    let cwasm_path = wasm_path.with_extension("cwasm");
+
+    let wt_config = make_wasmtime_config(cli.wasmtime_backtrace);
+    let engine = Engine::new(&wt_config).context("failed to create engine")?;
+    let wasm_bytes = std::fs::read(wasm_path)
+        .with_context(|| format!("failed to read {}", wasm_path.display()))?;
+    let cwasm_bytes = engine
+        .precompile_module(&wasm_bytes)
+        .context("failed to precompile module")?;
+    std::fs::write(&cwasm_path, cwasm_bytes)
+        .with_context(|| format!("failed to write {}", cwasm_path.display()))?;
+
+    eprintln!("OK: {}", cwasm_path.display());
+    Ok(())
+}
+
+/// Load a Wasm module from disk, supporting both `.wasm` and precompiled `.cwasm` files.
+///
+/// The function probes the file header via `Engine::detect_precompiled_file`.
+/// If the file is a precompiled module it is deserialized directly (skipping
+/// compilation). Otherwise it is compiled from source via `Module::from_file`.
+fn read_wasm_or_cwasm(engine: &Engine, path: &Path) -> Result<Module> {
+    // `detect_precompiled_file` *expects* input to already be an ELF file. It is used to detect
+    // whether this ELF matches the current host architecture.
+    //
+    // When passing in a .wasm file, the ELF parsing unwinds early. (`ElfFile64::parse(&read_cache)?;`)
+    // We can therefore not call .context()? on this function since that would unwind and not run the Module::from_file()
+    match engine.detect_precompiled_file(path) {
+        Ok(_) => unsafe { Module::deserialize_file(engine, path) }
+            .context("failed to deserialize precompiled module"),
+        Err(_) => Module::from_file(engine, path).context("failed to compile module"),
+    }
+}
+
 /// This function takes a Wasm function (Func) and a list of string arguments, parses the
 /// arguments into Wasm values based on expected types (ValType), and invokes the function
 fn invoke_func(store: &mut Store<HostCtx>, func: Func, args: &[String]) -> Result<Vec<Val>> {
@@ -517,9 +560,35 @@ fn invoke_func(store: &mut Store<HostCtx>, func: Func, args: &[String]) -> Resul
     // Invoke the function and then afterwards print all the results that came
     // out, if there are any.
     let mut results = vec![Val::null_func_ref(); ty.results().len()];
-    let _ = func
-        .call(&mut *store, &values, &mut results)
-        .with_context(|| format!("failed to invoke command default"));
+
+    // Unwind in case of an error, this allows us to pretty-print the WasmBacktrace context when option
+    // is enabled.
+    func.call(&mut *store, &values, &mut results)
+        .with_context(|| format!("failed to invoke command default"))?;
 
     Ok(results)
+}
+
+/// Generates a wasmtime config based on the whether or not the --wasmtime-backtrace flag was
+/// provided to lind-boot.
+fn make_wasmtime_config(backtrace: bool) -> wasmtime::Config {
+    let mut wt_config = wasmtime::Config::new();
+    wt_config.wasm_backtrace(backtrace);
+
+    let details = if backtrace {
+        WasmBacktraceDetails::Enable
+    } else {
+        WasmBacktraceDetails::Disable
+    };
+
+    wt_config.wasm_backtrace_details(details);
+
+    // Enable compilation cache — compiled .wasm artifacts are stored on disk
+    // so subsequent runs skip compilation. Best-effort: if config loading
+    // fails (e.g. no home dir), caching is simply disabled.
+    if let Err(e) = wt_config.cache_config_load_default() {
+        eprintln!("[lind-boot] warning: failed to enable wasm cache: {e}");
+    }
+
+    wt_config
 }

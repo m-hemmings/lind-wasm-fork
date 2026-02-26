@@ -3447,14 +3447,17 @@ pub extern "C" fn mprotect_syscall(
     }
 
     // Update vmmap to reflect the new protection flags
-    let cage = get_cage(cageid).unwrap();
-    let mut vmmap = cage.vmmap.write();
-    let user_addr = vmmap.sys_to_user(addr as usize) as u32;
-    vmmap.change_prot(
-        user_addr >> PAGESHIFT,
-        (rounded_length >> PAGESHIFT) as u32,
-        prot,
-    );
+    // Skip if length is zero (no pages to update) — Linux treats len=0 as a no-op
+    if rounded_length > 0 {
+        let cage = get_cage(cageid).unwrap();
+        let mut vmmap = cage.vmmap.write();
+        let user_addr = vmmap.sys_to_user(addr as usize) as u32;
+        vmmap.change_prot(
+            user_addr >> PAGESHIFT,
+            (rounded_length >> PAGESHIFT) as u32,
+            prot,
+        );
+    }
 
     ret
 }

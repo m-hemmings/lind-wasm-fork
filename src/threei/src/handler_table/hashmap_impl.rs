@@ -257,7 +257,8 @@ pub fn register_handler_impl(
     // remove it to ensure it does not shadow the new handler.
     if target_map.contains_key(&lind_platform_const::RAWPOSIX_CAGEID) {
         target_map.remove(&lind_platform_const::RAWPOSIX_CAGEID);
-    } else if target_map.contains_key(&lind_platform_const::THREEI_CAGEID) {
+    }
+    if target_map.contains_key(&lind_platform_const::THREEI_CAGEID) {
         target_map.remove(&lind_platform_const::THREEI_CAGEID);
     }
 

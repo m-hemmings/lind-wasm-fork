@@ -2,9 +2,5 @@ file_tests/deterministic/popen.c
 networking_tests/deterministic/uds-nb-select.c
 networking_tests/deterministic/uds-serverclient.c
 process_tests/deterministic/exit_failure.c
-networking_tests/deterministic/getifaddrs.c
-signal_tests/deterministic/signal_int_thread.c
-interpose-mmap.c
-interpose-mmap_grate.c
 networking_tests/deterministic/ipv6_basic.c
 networking_tests/deterministic/epoll_edge_triggered.c

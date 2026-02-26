@@ -118,17 +118,22 @@ Files ending in `.grate` represent a grate-backed benchmark.
 For example:
 
 ```
-imfs_grate.fs_read.grate
+imfs-grate.fs_read.grate
 ```
 
 This means:
-- compile `tests/benchmarks/imfs_grate/` as a grate
+- fetch `examples/imfs-grate/` from the upstream grates repo
+- copy it into `tests/benchmarks/imfs-grate/`
+- compile that grate via `compile_grate.sh`
 - compile `tests/benchmarks/fs_read.c` as a cage
 - run `lind-boot imfs_grate fs_read` so the syscall is interposed by the grate
 
 Grate directories contain `compile_grate.sh` which use `lind_compile --compile-grate`.
 
 The `.grate` tests files are empty and are used only to encode the expected order to launch grates and cages.
+
+Notes:
+- Grates are sourced from `https://github.com/Lind-Project/lind-wasm-example-grates` under `examples/`.
 
 ## Adding a New Test
 
@@ -146,9 +151,9 @@ Notes:
 
 ### Grate tests
 Taking the example of adding a `geteuid_grate` test:
-1. Add a grate directory under `tests/benchmarks/`. This directory should be named `geteuid_grate` and must contain a `compile_grate.sh` file which will compile and place the final binary in `lindfs/`
-2. Add an empty file ending with `.grate`. The name of this file encodes the order of execution for this test. Name the file `geteuid_grate.geteuid.grate` which would run `lind-boot geteuid_grate.cwasm geteuid.cwasm`
-3. For components that are not grates, these files must already be present in the `/tests/benchmarks/`. In this case, `geteuid.c` must already exist. 
+1. Add the grate to the upstream repo under `examples/` and name it with `-` (for example `geteuid-grate`).
+2. Add an empty file ending with `.grate`. The name of this file encodes the order of execution for this test. Name the file `geteuid-grate.geteuid.grate` which would run `lind-boot geteuid_grate.cwasm geteuid.cwasm`
+3. For components that are not grates, these files must already be present in `tests/benchmarks/`. In this case, `geteuid.c` must already exist. 
 
 
 ### Aggregation:

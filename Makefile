@@ -71,6 +71,9 @@ sync-sysroot:
 	$(RM) -r $(SYSROOT_DIR)
 	cp -R src/glibc/sysroot $(SYSROOT_DIR)
 
+.PHONY: prepare-lind-root
+prepare-lind-root: lindfs
+
 .PHONY: test
 test: prepare-lind-root
 	# Unified harness entry point (run all discovered harnesses for e2e signal)

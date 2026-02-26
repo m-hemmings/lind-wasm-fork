@@ -71,24 +71,13 @@ sync-sysroot:
 	$(RM) -r $(SYSROOT_DIR)
 	cp -R src/glibc/sysroot $(SYSROOT_DIR)
 
-.PHONY: prepare-lind-root
-prepare-lind-root: lindfs
-
 .PHONY: test
-test: prepare-lind-root
+test: lindfs
 	# Unified harness entry point (run all discovered harnesses for e2e signal)
 	LIND_WASM_BASE=. LINDFS_ROOT=$(LINDFS_ROOT) \
 	python3 ./scripts/test_runner.py --export-report report.html && \
 	find reports -maxdepth 1 -name '*.json' -print -exec cat {} \;; \
 	if python3 -c "import glob,json,sys; paths=glob.glob('reports/*.json'); total=sum(int(json.load(open(p)).get('number_of_failures', 0)) for p in paths); print(f'total_failures={total}'); sys.exit(1 if total else 0)"; then \
-test: lindfs
-	# NOTE: `grep` workaround required for lack of meaningful exit code in wasmtestreport.py
-	LIND_WASM_BASE=. LINDFS_ROOT=$(LINDFS_ROOT) \
-	./scripts/wasmtestreport.py --allow-pre-compiled && \
-	cat results.json; \
-	if grep -q '"number_of_failures": [^0]' results.json; then \
-	  echo "E2E_STATUS=fail" > e2e_status; \
-	else \
 	  echo "E2E_STATUS=pass" > e2e_status; \
 	else \
 	  echo "E2E_STATUS=fail" > e2e_status; \

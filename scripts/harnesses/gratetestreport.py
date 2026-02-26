@@ -285,14 +285,17 @@ def build_grate_run_cmd(grate_wasm: Path, cage_wasm: Path) -> list[str]:
     """
     lind_run_wrapper = LIND_TOOL_PATH / "lind_run"
 
+    grate_wasm = Path(grate_wasm)
+    cage_wasm = Path(cage_wasm)
+
     # Respect explicit override first.
     if "GRATE_RUNNER" in os.environ:
-        return [GRATE_RUNNER, str(grate_wasm), str(cage_wasm)]
+        return [GRATE_RUNNER, str(grate_wasm.name), str(cage_wasm.name)]
 
     if lind_run_wrapper.is_file():
-        return [str(lind_run_wrapper), str(grate_wasm), str(cage_wasm)]
+        return [str(lind_run_wrapper), str(grate_wasm.name), str(cage_wasm.name)]
 
-    return [GRATE_RUNNER, str(grate_wasm), str(cage_wasm)]
+    return [GRATE_RUNNER, str(grate_wasm.name), str(cage_wasm.name)]
 
 
 def run_grate_test(test: GrateTestCase, timeout_sec: int) -> tuple[str, str, int | str]:

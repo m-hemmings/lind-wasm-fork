@@ -70,6 +70,7 @@ def discover_harness_modules(selected: set[str] | None = None) -> list[str]:
 
 
 def execute_with_echo(command: list[str], cwd: Path, prefix: str) -> tuple[int, str]:
+    print(f"Executing command with echo: {' '.join(command)} (cwd={cwd})")
     """Run command and stream output lines with a prefix.
 
     Returns:
@@ -208,7 +209,13 @@ def main() -> None:
     harness_outputs: list[dict[str, Any]] = []
     for module_name in harness_modules:
         print(f"Running harness: {module_name}")
-        result = run_harness(module_name, passthrough_args)
+
+        args = list(passthrough_args)
+
+        if module_name == "wasmtestreport":
+            args.append("--allow-pre-compile")
+
+        result = run_harness(module_name, args)
         output_info = write_outputs(result, reports_dir)
         harness_outputs.append(output_info)
 

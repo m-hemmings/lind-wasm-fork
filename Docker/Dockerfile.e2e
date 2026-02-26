@@ -166,7 +166,7 @@ RUN --mount=from=build-lind-boot,source=src/lind-boot/target,destination=src/lin
     --mount=from=build-lind-boot,source=build/lind-boot,destination=/build/lind-boot \
     --mount=from=build-glibc,source=src/glibc/sysroot,destination=src/glibc/sysroot \
     make test && \
-    OUT_DIR=/ REPORT_PATH=/report.html make md_generation
+    make md_generation OUT=/ REPORT=/report.html
 
 
 FROM scratch AS artifacts

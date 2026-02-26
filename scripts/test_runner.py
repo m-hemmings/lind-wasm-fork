@@ -57,6 +57,27 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+
+
+def normalize_args(parsed: argparse.Namespace | tuple[argparse.Namespace, list[str]] | list[Any]) -> argparse.Namespace:
+    """Normalize parser outputs across accidental parse_* variants.
+
+    Some broken merges/edits may return parse_known_args()-style outputs
+    (namespace, extras) or list-wrapped namespace objects. Normalize to an
+    argparse.Namespace so downstream code can rely on .export_report, etc.
+    """
+    if isinstance(parsed, argparse.Namespace):
+        return parsed
+
+    if isinstance(parsed, tuple) and parsed and isinstance(parsed[0], argparse.Namespace):
+        return parsed[0]
+
+    if isinstance(parsed, list) and parsed and isinstance(parsed[0], argparse.Namespace):
+        return parsed[0]
+
+    raise TypeError(f"Unexpected parse_args() return type: {type(parsed)!r}")
+
+
 def discover_harness_modules(selected: set[str] | None = None) -> list[str]:
     modules: list[str] = []
     for path in sorted(HARNESS_DIR.glob("*.py")):
@@ -70,7 +91,6 @@ def discover_harness_modules(selected: set[str] | None = None) -> list[str]:
 
 
 def execute_with_echo(command: list[str], cwd: Path, prefix: str) -> tuple[int, str]:
-    print(f"Executing command with echo: {' '.join(command)} (cwd={cwd})")
     """Run command and stream output lines with a prefix.
 
     Returns:
@@ -191,7 +211,7 @@ def generate_combined_report(harness_outputs: list[dict[str, Any]], reports_dir:
 
 
 def main() -> None:
-    args = parse_args()
+    args = normalize_args(parse_args())
     reports_dir = args.reports_dir
     reports_dir.mkdir(parents=True, exist_ok=True)
 
@@ -209,13 +229,7 @@ def main() -> None:
     harness_outputs: list[dict[str, Any]] = []
     for module_name in harness_modules:
         print(f"Running harness: {module_name}")
-
-        args = list(passthrough_args)
-
-        if module_name == "wasmtestreport":
-            args.append("--allow-pre-compile")
-
-        result = run_harness(module_name, args)
+        result = run_harness(module_name, passthrough_args)
         output_info = write_outputs(result, reports_dir)
         harness_outputs.append(output_info)
 

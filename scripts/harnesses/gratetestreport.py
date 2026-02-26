@@ -135,18 +135,23 @@ class GrateTestCase:
         return self.cage_source.with_suffix(".wasm")
 
 
-def resolve_wasm_output(source_file: Path, cwd: Path) -> Path:
-    """Resolve expected wasm output location across differing lind-clang behaviors."""
-    candidate_in_source_dir = source_file.with_suffix(".wasm")
-    candidate_in_cwd = cwd / source_file.with_suffix(".wasm").name
+def resolve_module_output(source_file: Path, cwd: Path) -> Path:
+    """
+    Resolve expected runtime module output across lind-clang modes.    
+    """
+    candidates = [
+        source_file.with_suffix(".cwasm"),
+        source_file.with_suffix(".wasm"),
+        cwd / source_file.with_suffix(".cwasm").name,
+        cwd / source_file.with_suffix(".wasm").name,
+    ]
 
-    if candidate_in_source_dir.exists():
-        return candidate_in_source_dir
-    if candidate_in_cwd.exists():
-        return candidate_in_cwd
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
 
-    # Default to source-dir expectation for clearer error messages.
-    return candidate_in_source_dir
+    # Default to cwasm expectation for clearer error messages in full pipeline.
+    return source_file.with_suffix(".cwasm")
 
 
 def in_selected_folders(path: Path, run_folders: list[str], skip_folders: list[str]) -> bool:
@@ -255,14 +260,14 @@ def compile_grate_test(test: GrateTestCase) -> tuple[bool, str]:
             f"STDOUT:\n{cage_proc.stdout}\nSTDERR:\n{cage_proc.stderr}"
         )
 
-    grate_wasm = resolve_wasm_output(test.grate_source, test.grate_source.parent)
-    cage_wasm = resolve_wasm_output(test.cage_source, test.cage_source.parent)
+    grate_module = resolve_module_output(test.grate_source, test.grate_source.parent)
+    cage_module = resolve_module_output(test.cage_source, test.cage_source.parent)
 
-    if not grate_wasm.exists() or not cage_wasm.exists():
+    if not grate_module.exists() or not cage_module.exists():
         return False, (
             "Compilation completed but expected wasm outputs were not found.\n"
-            f"grate_wasm={grate_wasm} exists={grate_wasm.exists()}\n"
-            f"cage_wasm={cage_wasm} exists={cage_wasm.exists()}"
+            f"grate_module={grate_module} exists={grate_module.exists()}\n"
+            f"cage_module={cage_module} exists={cage_module.exists()}"
         )
 
     return True, ""
@@ -287,18 +292,14 @@ def build_grate_run_cmd(grate_wasm: Path, cage_wasm: Path) -> list[str]:
 
 
 def run_grate_test(test: GrateTestCase, timeout_sec: int) -> tuple[str, str, int | str]:
-    grate_wasm = resolve_wasm_output(test.grate_source, test.grate_source.parent)
-    cage_wasm = resolve_wasm_output(test.cage_source, test.cage_source.parent)
+    grate_module = resolve_module_output(test.grate_source, test.grate_source.parent)
+    cage_module = resolve_module_output(test.cage_source, test.cage_source.parent)
 
-    # Some lind-wasm wrappers resolve input files relative to cwd and may not
-    # reliably handle host absolute paths. Prefer running from the wasm folder
-    # and passing file names when both artifacts are co-located.
-    if grate_wasm.parent == cage_wasm.parent:
-        run_cwd = grate_wasm.parent
-        run_cmd = build_grate_run_cmd(Path(grate_wasm.name), Path(cage_wasm.name))
-    else:
-        run_cwd = REPO_ROOT
-        run_cmd = build_grate_run_cmd(grate_wasm, cage_wasm)
+    # In containerized e2e runs, lind-boot may execute with a different working
+    # directory than the Python harness. Use absolute wasm paths so runtime file
+    # resolution does not depend on cwd.
+    run_cwd = REPO_ROOT
+    run_cmd = build_grate_run_cmd(grate_module.resolve(), cage_module.resolve())
 
     try:
         proc = run_subprocess(run_cmd, timeout=timeout_sec, cwd=run_cwd)

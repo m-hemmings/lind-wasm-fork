@@ -15,7 +15,6 @@ use sysdefs::*;
 use typemap::cage_helpers::convert_fd_to_host;
 use typemap::datatype_conversion::*;
 use typemap::network_helpers::{convert_host_sockaddr, convert_sockpair, copy_out_sockaddr};
-use typemap::recvmsg_structs::{GuestIovec, GuestMsghdr};
 
 /// `epoll_ctl` handles registering, modifying, and removing the watch set, while `epoll_wait`
 /// simply gathers ready events based on what's already registered and writes them back to the
@@ -1659,87 +1658,19 @@ pub extern "C" fn recvmsg_syscall(
 
     let fd = convert_fd_to_host(fd_arg, fd_cageid, cageid);
     if fd < 0 {
-        let e = -fd;
-        return handle_errno(e, "recvmsg");
+        return handle_errno(-fd, "recvmsg");
     }
     let flags = sc_convert_sysarg_to_i32(flags_arg, flags_cageid, cageid);
 
-    // glibc recvmsg.c passes TRANSLATE_GUEST_POINTER_TO_HOST(msg), so msg_arg is a host pointer
-    // to a guest-layout (wasm32/ILP32) msghdr.
-    if msg_arg == 0 {
-        return syscall_error(Errno::EFAULT, "recvmsg_syscall", "msg is null");
-    }
-    let msg_ptr = msg_arg as *const GuestMsghdr;
-    let guest_msg = unsafe { *msg_ptr };
+    // glibc recvmsg.c already translated all guest pointers (msghdr, iov, buffers)
+    // to host layout using the split-pointer trick, so msg_arg is a host pointer
+    // to a host-layout msghdr ready for libc::recvmsg.
+    let msg_ptr = sc_convert_buf(msg_arg, msg_cageid, cageid) as *mut libc::msghdr;
 
-    let iovlen = guest_msg.msg_iovlen as usize;
-    if iovlen == 0 || iovlen > 1024 {
-        return syscall_error(Errno::EINVAL, "recvmsg_syscall", "msg_iovlen out of range");
-    }
-
-    let iov_array_host = sc_convert_uaddr_to_host(guest_msg.msg_iov as u64, msg_cageid, cageid);
-    let guest_iov_ptr = iov_array_host as *const GuestIovec;
-    let guest_iov = unsafe { std::slice::from_raw_parts(guest_iov_ptr, iovlen) };
-
-    let mut host_iov: Vec<libc::iovec> = Vec::with_capacity(iovlen);
-    for g in guest_iov.iter() {
-        let base = if g.iov_len == 0 || g.iov_base == 0 {
-            ptr::null_mut()
-        } else {
-            sc_convert_uaddr_to_host(g.iov_base as u64, msg_cageid, cageid) as *mut c_void
-        };
-        host_iov.push(libc::iovec {
-            iov_base: base,
-            iov_len: g.iov_len as usize,
-        });
-    }
-
-    let msg_name = if guest_msg.msg_name == 0 {
-        ptr::null_mut()
-    } else {
-        sc_convert_uaddr_to_host(guest_msg.msg_name as u64, msg_cageid, cageid) as *mut c_void
-    };
-    let msg_control = if guest_msg.msg_control == 0 {
-        ptr::null_mut()
-    } else {
-        sc_convert_uaddr_to_host(guest_msg.msg_control as u64, msg_cageid, cageid) as *mut c_void
-    };
-
-    let mut host_msg = libc::msghdr {
-        msg_name,
-        msg_namelen: guest_msg.msg_namelen,
-        msg_iov: host_iov.as_mut_ptr(),
-        msg_iovlen: iovlen,
-        msg_control,
-        msg_controllen: guest_msg.msg_controllen as usize,
-        msg_flags: 0,
-    };
-
-    // Validate iov: need non-null base if iov_len > 0
-    if iovlen > 0 && host_iov[0].iov_len > 0 && host_iov[0].iov_base.is_null() {
-        return syscall_error(
-            Errno::EFAULT,
-            "recvmsg_syscall",
-            "iov_base null with iov_len > 0",
-        );
-    }
-
-    let ret = unsafe { libc::recvmsg(fd, &mut host_msg, flags) as i32 };
-    let e = get_errno();
-
+    let ret = unsafe { libc::recvmsg(fd, msg_ptr, flags) as i32 };
     if ret < 0 {
-        return handle_errno(e, "recvmsg");
+        return handle_errno(get_errno(), "recvmsg");
     }
-
-    // Copy back only the output fields glibc expects; iov data was written by kernel into guest
-    // memory via the translated iov_base pointers.
-    let guest_msg_mut = msg_ptr as *mut GuestMsghdr;
-    unsafe {
-        (*guest_msg_mut).msg_namelen = host_msg.msg_namelen;
-        (*guest_msg_mut).msg_controllen = host_msg.msg_controllen as u32;
-        (*guest_msg_mut).msg_flags = host_msg.msg_flags as u32;
-    }
-
     ret
 }
 

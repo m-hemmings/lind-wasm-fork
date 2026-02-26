@@ -105,7 +105,9 @@ jobs:
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: wasm-e2e-report
-          path: ${{ env.REPORT_LOCAL_DIR }}/${{ env.REPORT_LOCAL_FILE }}
+          path: |
+            ${{ env.REPORT_LOCAL_DIR }}/reports/${{ env.REPORT_HTML_IN_REPORTS }}
+            ${{ env.REPORT_LOCAL_DIR }}/${{ env.REPORT_LOCAL_FILE }}
           if-no-files-found: error
           retention-days: 7
 
@@ -129,7 +131,9 @@ jobs:
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: wasm-e2e-unified-html
-          path: ${{ env.REPORT_LOCAL_DIR }}/reports/${{ env.REPORT_HTML_IN_REPORTS }}
+          path: |
+            ${{ env.REPORT_LOCAL_DIR }}/reports/${{ env.REPORT_HTML_IN_REPORTS }}
+            ${{ env.REPORT_LOCAL_DIR }}/${{ env.REPORT_LOCAL_FILE }}
           if-no-files-found: error
           retention-days: 7
       

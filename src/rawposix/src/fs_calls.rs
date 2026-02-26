@@ -3494,6 +3494,17 @@ pub extern "C" fn mprotect_syscall(
         return handle_errno(errno, "mprotect");
     }
 
+    // Update vmmap to reflect the new protection bits
+    let cage = get_cage(cageid).unwrap();
+    let mut vmmap = cage.vmmap.write();
+    let user_addr = vmmap.sys_to_user(addr as usize);
+    let rounded_length = round_up_page(len as u64);
+    vmmap.change_prot(
+        user_addr >> PAGESHIFT,
+        (rounded_length >> PAGESHIFT) as u32,
+        prot,
+    );
+
     ret
 }
 

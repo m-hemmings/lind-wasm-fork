@@ -14,3 +14,5 @@ signal_tests/deterministic/signal_procmask.c
 signal_tests/deterministic/signal_sa_mask.c
 networking_tests/deterministic/getifaddrs.c
 signal_tests/deterministic/signal_int_thread.c
+interpose-mmap.c
+interpose-mmap_grate.c

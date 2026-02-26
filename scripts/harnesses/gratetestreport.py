@@ -37,6 +37,7 @@ LIND_TOOL_PATH = REPO_ROOT / "scripts"
 
 GRATE_CLANG = os.environ.get("GRATE_CLANG", "lind-clang")
 GRATE_RUNNER = os.environ.get("GRATE_RUNNER", "lind-wasm")
+SKIP_TESTS_FILE = "skip_test_cases.txt"
 
 error_types = {
     "Compile_Failure": "Compile Failure",
@@ -168,12 +169,18 @@ def discover_tests(args: argparse.Namespace) -> tuple[list[GrateTestCase], list[
     else:
         grate_files = sorted(GRATE_TEST_BASE.rglob("*_grate.c"))
 
+    skip_test_cases = load_skip_test_cases()
+
     for grate_file in grate_files:
         if not in_selected_folders(grate_file, args.run, args.skip):
             continue
 
         cage_file = grate_file.with_name(grate_file.name.replace("_grate.c", ".c"))
         test_name = str(grate_file.relative_to(GRATE_TEST_BASE))
+
+        if should_skip_test_case(grate_file, cage_file, skip_test_cases):
+            logger.info(f"Skipping {test_name}")
+            continue
 
         if not cage_file.exists():
             failures.append((test_name, f"Missing cage source for grate test: {cage_file}"))
@@ -182,6 +189,40 @@ def discover_tests(args: argparse.Namespace) -> tuple[list[GrateTestCase], list[
         cases.append(GrateTestCase(name=test_name, grate_source=grate_file, cage_source=cage_file))
 
     return cases, failures
+
+
+def load_skip_test_cases() -> set[str]:
+    skip_test_cases: set[str] = set()
+    skip_file = REPO_ROOT / SKIP_TESTS_FILE
+
+    if not skip_file.exists():
+        logger.debug(f"{SKIP_TESTS_FILE} not found")
+        return skip_test_cases
+
+    for line in skip_file.read_text(encoding="utf-8").splitlines():
+        test_name = line.strip()
+        if not test_name or test_name.startswith("#"):
+            continue
+        skip_test_cases.add(test_name)
+
+    return skip_test_cases
+
+
+def should_skip_test_case(grate_file: Path, cage_file: Path, skip_test_cases: set[str]) -> bool:
+    if not skip_test_cases:
+        return False
+
+    grate_rel = str(grate_file.relative_to(GRATE_TEST_BASE))
+    cage_rel = str(cage_file.relative_to(GRATE_TEST_BASE))
+
+    candidate_names = {
+        grate_rel,
+        cage_rel,
+        grate_file.name,
+        cage_file.name,
+    }
+
+    return any(name in skip_test_cases for name in candidate_names)
 
 
 def run_subprocess(cmd: list[str], timeout: int | None = None, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:

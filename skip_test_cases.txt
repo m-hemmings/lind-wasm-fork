@@ -4,3 +4,7 @@ networking_tests/deterministic/uds-serverclient.c
 process_tests/deterministic/exit_failure.c
 networking_tests/deterministic/ipv6_basic.c
 networking_tests/deterministic/epoll_edge_triggered.c
+grate-tests/interpose-mmap.c
+grate-tests/interpose-mmap_grate.c
+grate-tests/simple-tests/cpdata.c
+grate-tests/simple-tests/cpdata_grate.c

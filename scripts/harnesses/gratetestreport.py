@@ -34,6 +34,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parents[1]
 GRATE_TEST_BASE = REPO_ROOT / "tests" / "grate-tests"
 LIND_TOOL_PATH = REPO_ROOT / "scripts"
+LINDFS_ROOT = Path(os.environ.get("LINDFS_ROOT", REPO_ROOT / "lindfs")).resolve()
 
 GRATE_CLANG = os.environ.get("GRATE_CLANG", "lind-clang")
 GRATE_RUNNER = os.environ.get("GRATE_RUNNER", "lind-wasm")
@@ -136,8 +137,11 @@ class GrateTestCase:
 
 
 def resolve_module_output(source_file: Path, cwd: Path) -> Path:
-    """
-    Resolve expected runtime module output across lind-clang modes.    
+    """Resolve expected runtime module output across lind-clang modes.
+
+    `lind-clang` (lind_compile) defaults to full mode and typically produces a
+    precompiled `.cwasm` artifact. In some environments/tests a plain `.wasm`
+    is executed instead. Support both and prefer the artifact that exists.
     """
     candidates = [
         source_file.with_suffix(".cwasm"),
@@ -295,11 +299,20 @@ def run_grate_test(test: GrateTestCase, timeout_sec: int) -> tuple[str, str, int
     grate_module = resolve_module_output(test.grate_source, test.grate_source.parent)
     cage_module = resolve_module_output(test.cage_source, test.cage_source.parent)
 
-    # In containerized e2e runs, lind-boot may execute with a different working
-    # directory than the Python harness. Use absolute wasm paths so runtime file
-    # resolution does not depend on cwd.
+    # lind_run/lind-boot resolves inputs from lindfs. lind_compile copies the
+    # build artifact into LINDFS_ROOT, so run from that location rather than
+    # source-tree absolute paths.
+    grate_runtime_module = (LINDFS_ROOT / grate_module.name).resolve()
+    cage_runtime_module = (LINDFS_ROOT / cage_module.name).resolve()
+
+    # Fall back to direct module paths when lindfs copy is unavailable.
+    if not grate_runtime_module.exists():
+        grate_runtime_module = grate_module.resolve()
+    if not cage_runtime_module.exists():
+        cage_runtime_module = cage_module.resolve()
+
     run_cwd = REPO_ROOT
-    run_cmd = build_grate_run_cmd(grate_module.resolve(), cage_module.resolve())
+    run_cmd = build_grate_run_cmd(grate_runtime_module, cage_runtime_module)
 
     try:
         proc = run_subprocess(run_cmd, timeout=timeout_sec, cwd=run_cwd)

@@ -29,7 +29,10 @@ void uds_dgram(int msg_size) {
 	// Child
 	if (pid == 0) {
 		close(sv[0]);
-		char buf[msg_size];
+		char *buf = malloc(msg_size);
+		if (buf == NULL) {
+			exit(1);
+		}
 		for (int i = 0; i < loops; i++) {
 			ssize_t n = recv(sv[1], buf, msg_size, 0);
 			if (n <= 0) {
@@ -39,12 +42,11 @@ void uds_dgram(int msg_size) {
 			send(sv[1], buf, n, 0);
 		}
 		close(sv[1]);
-		_exit(0);
+		exit(0);
 	}
 
 	// Parent
 	close(sv[1]);
-	// char buf[msg_size];
 	char *buf = malloc(msg_size);
 	if (buf == NULL) {
 		exit(1);
@@ -82,7 +84,6 @@ void uds_stream(int msg_size) {
 	// Child
 	if (pid == 0) {
 		close(sv[0]);
-		// char buf[msg_size];
 		char *buf = malloc(msg_size);
 		if (buf == NULL) {
 			exit(1);
@@ -97,12 +98,11 @@ void uds_stream(int msg_size) {
 		}
 		close(sv[1]);
 		free(buf);
-		_exit(0);
+		exit(0);
 	}
 
 	// Parent
 	close(sv[1]);
-	// char buf[msg_size];
 	char *buf = malloc(msg_size);
 	if (buf == NULL) {
 		exit(0);

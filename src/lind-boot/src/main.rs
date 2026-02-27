@@ -5,12 +5,13 @@ use crate::{
     cli::CliOptions,
     lind_wasmtime::{execute_wasmtime, precompile_module},
 };
+
 use clap::Parser;
 use libc;
-use rawposix::init::{rawposix_shutdown, rawposix_start};
 use std::ffi::CString;
 
-const LINDFS_ROOT: &'static str = "/home/lind/lind-wasm/lindfs";
+use rawposix::init::{rawposix_shutdown, rawposix_start};
+use sysdefs::constants::LINDFS_ROOT;
 
 /// Helper function which `chroot`s to `lindfs`.
 ///

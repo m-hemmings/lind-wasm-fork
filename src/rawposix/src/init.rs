@@ -10,8 +10,8 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicI32, AtomicU64, Ordering::*};
 use std::sync::Arc;
 use sysdefs::constants::{
-    EXIT_SUCCESS, FDKIND_KERNEL, LINDFS_ROOT, RAWPOSIX_CAGEID, STDERR_FILENO, STDIN_FILENO,
-    STDOUT_FILENO, THREEI_CAGEID, VERBOSE,
+    EXIT_SUCCESS, FDKIND_KERNEL, RAWPOSIX_CAGEID, STDERR_FILENO, STDIN_FILENO, STDOUT_FILENO,
+    THREEI_CAGEID, VERBOSE,
 };
 use threei::{
     copy_data_between_cages, copy_handler_table_to_cage, register_handler,

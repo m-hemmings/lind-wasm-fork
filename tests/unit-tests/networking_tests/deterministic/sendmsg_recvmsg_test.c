@@ -6,8 +6,6 @@
 #include <unistd.h>
 
 int main() {
-    fprintf(stderr, "sizeof(struct msghdr)=%zu sizeof(struct iovec)=%zu\n",
-            sizeof(struct msghdr), sizeof(struct iovec));
     int sv[2];
     if (socketpair(AF_UNIX, SOCK_DGRAM, 0, sv) == -1) {
         perror("socketpair");

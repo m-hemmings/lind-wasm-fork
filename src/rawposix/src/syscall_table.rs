@@ -10,18 +10,18 @@ use super::fs_calls::{
     ftruncate_syscall, futex_syscall, getcwd_syscall, getdents_syscall, getrandom_syscall,
     ioctl_syscall, link_syscall, lseek_syscall, mkdir_syscall, mmap_syscall, mprotect_syscall,
     munmap_syscall, nanosleep_time64_syscall, open_syscall, pipe2_syscall, pipe_syscall,
-    pread_syscall, pwrite_syscall, read_syscall, readlink_syscall, readlinkat_syscall, readv_syscall,
-    rename_syscall, rmdir_syscall, shmat_syscall, shmctl_syscall, shmdt_syscall, shmget_syscall,
-    stat_syscall, statfs_syscall, sync_file_range_syscall, truncate_syscall, unlink_syscall,
-    unlinkat_syscall, write_syscall, writev_syscall,
+    pread_syscall, pwrite_syscall, read_syscall, readlink_syscall, readlinkat_syscall,
+    readv_syscall, rename_syscall, rmdir_syscall, shmat_syscall, shmctl_syscall, shmdt_syscall,
+    shmget_syscall, stat_syscall, statfs_syscall, sync_file_range_syscall, truncate_syscall,
+    unlink_syscall, unlinkat_syscall, write_syscall, writev_syscall,
 };
 use super::init::RawCallFunc;
 use super::net_calls::{
     accept_syscall, bind_syscall, connect_syscall, epoll_create1_syscall, epoll_create_syscall,
     epoll_ctl_syscall, epoll_wait_syscall, gethostname_syscall, getpeername_syscall,
     getsockname_syscall, getsockopt_syscall, listen_syscall, poll_syscall, recvfrom_syscall,
-    recvmsg_syscall, select_syscall, sendmsg_syscall, sendto_syscall, setsockopt_syscall, shutdown_syscall,
-    socket_syscall, socketpair_syscall,
+    recvmsg_syscall, select_syscall, sendmsg_syscall, sendto_syscall, setsockopt_syscall,
+    shutdown_syscall, socket_syscall, socketpair_syscall,
 };
 use super::sys_calls::{
     exec_syscall, exit_syscall, fork_syscall, getegid_syscall, geteuid_syscall, getgid_syscall,

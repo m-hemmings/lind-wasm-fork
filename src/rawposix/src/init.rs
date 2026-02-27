@@ -201,27 +201,6 @@ pub fn register_threei_syscall(self_cageid: u64) -> i32 {
 pub fn rawposix_start(verbosity: isize) {
     let _ = VERBOSE.set(verbosity); //assigned to suppress unused result warning
 
-    unsafe {
-        let lindfs_path = CString::new(LINDFS_ROOT).unwrap();
-        libc::mkdir(lindfs_path.as_ptr(), 0o775);
-        let ret = libc::chroot(lindfs_path.as_ptr());
-        if ret != 0 {
-            panic!(
-                "Failed to chroot to {}: {}",
-                LINDFS_ROOT,
-                std::io::Error::last_os_error()
-            );
-        }
-        let root = CString::new("/").unwrap();
-        let ret = libc::chdir(root.as_ptr());
-        if ret != 0 {
-            panic!(
-                "Failed to chdir to / after chroot: {}",
-                std::io::Error::last_os_error()
-            )
-        }
-    }
-
     // init cage table
     cagetable_init();
 

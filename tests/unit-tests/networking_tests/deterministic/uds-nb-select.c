@@ -9,11 +9,9 @@
 #include <sys/select.h>
 #include <errno.h>
 
+pthread_barrier_t barrier;
 #define SERVER_PATH "unix_sock.server"
 #define CLIENT_PATH "unix_sock.client"
-
-volatile int server_done = 0;
-volatile int client_done = 0;
 
 void *client(void *v)
 {
@@ -54,7 +52,7 @@ void *client(void *v)
 
     server_sockaddr.sun_family = AF_UNIX;
     strcpy(server_sockaddr.sun_path, SERVER_PATH);
-    sleep(1); // wait for server to be ready
+    pthread_barrier_wait(&barrier);
     int connret = connect(client_sock, (struct sockaddr *)&server_sockaddr, sizeof(server_sockaddr));
     int isTCPConnectInProgress = ((connret == -1) && (errno == EINPROGRESS));
     if ((connret == 0) || (isTCPConnectInProgress))
@@ -139,7 +137,6 @@ void *client(void *v)
     else
         perror("connect()");
     close(client_sock);
-    client_done = 1;
     return NULL;
 }
 
@@ -177,6 +174,8 @@ void *server(void *v)
         perror("listen");
         exit(EXIT_FAILURE);
     }
+    pthread_barrier_wait(&barrier);
+
     sleep(2);
 
     if ((new_socket = accept(server_fd, (struct sockaddr *)&client_sockaddr,
@@ -190,21 +189,16 @@ void *server(void *v)
     send(new_socket, hello, strlen(hello), 0);
     printf("Server: Hello message sent\n");
     close(new_socket);
-    server_done = 1;
     return NULL;
 }
 
 int main()
 {
     pthread_t serverthread, clientthread;
+    pthread_barrier_init(&barrier, NULL, 2);
     pthread_create(&serverthread, NULL, server, NULL);
     pthread_create(&clientthread, NULL, client, NULL);
-    // Wait for both threads to complete.
-    // pthread_join hangs in lind-wasm (missing CLONE_CHILD_CLEARTID),
-    // so we poll completion flags instead.
-    while (!server_done || !client_done)
-        sleep(1);
-    // Allow threads to fully exit before main returns.
-    sleep(1);
+    pthread_join(clientthread, NULL);
+    pthread_join(serverthread, NULL);
     return 0;
 }

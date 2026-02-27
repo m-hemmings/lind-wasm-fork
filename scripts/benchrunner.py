@@ -155,8 +155,6 @@ def parse_output(res, output, platform):
                 continue
             test, param, loops, avg = parts
 
-            param = int(param)
-
             if test not in res:
                 res[test] = {}
             if param not in res[test]:
@@ -171,7 +169,7 @@ def parse_output(res, output, platform):
 
 def run_lind(wasm_paths, res, platform):
     """Run lind-boot with one or more wasm paths."""
-    cmd = ["sudo", "lind-boot"] + wasm_paths
+    cmd = ["lind_run"] + wasm_paths
     status = run_cmd(cmd)
     if status:
         parse_output(res, status.stdout, platform)
@@ -215,6 +213,13 @@ def to_int(value):
         return -1
 
 
+def try_int(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return value
+
+
 def format_ratio(value, base):
     """Format value and its ratio to base."""
     v = to_int(value)
@@ -250,7 +255,7 @@ def print_results(res):
     if len(rows) == 0:
         return
 
-    rows.sort(key=lambda r: (r[0], r[1]))
+    rows.sort(key=lambda r: (r[0], try_int(r[1])))
 
     headers = ("TEST", "PARAM", "LINUX (ns)",
                "LIND (ns)", "GRATE (ns)", "ITERATIONS")
@@ -297,7 +302,7 @@ def collect_tests(patterns):
     files = []
     for p in patterns:
         for path in BENCH_DIR.glob(f"{p}*"):
-            if path.name in ("bench.c", "imfs.c"):
+            if path.name in ("bench.c"):
                 continue
             if path.is_file() and path.suffix in (".c", ".grate"):
                 files.append(path)

@@ -55,8 +55,7 @@ def lindfs_path(rel: Path) -> Path:
 
 def compile_lind(c_file: Path) -> str:
     """Compile a C benchmark to wasm using lind_compile."""
-    status = run_cmd(["lind_compile", str(c_file), str(
-        BENCH_DIR / "imfs.c"), str(BENCH_DIR / "bench.c")])
+    status = run_cmd(["lind_compile", str(c_file), str(BENCH_DIR / "bench.c")])
 
     if not status:
         return None
@@ -174,18 +173,19 @@ def run_lind(wasm_paths, res, platform):
     """Run lind-boot with one or more wasm paths."""
     cmd = ["sudo", "lind-boot"] + wasm_paths
     status = run_cmd(cmd)
-    if not status:
-        return
+    if status:
+        parse_output(res, status.stdout, platform)
 
-    parse_output(res, status.stdout, platform)
+    return status
 
 
 def run_native(binary_path: Path, res):
     """Run a native benchmark binary."""
     status = run_cmd([str(binary_path)])
-    if not status:
-        return
-    parse_output(res, status.stdout, "linux")
+    if status:
+        parse_output(res, status.stdout, "linux")
+
+    return status
 
 
 def run_grate_test(grate_dir: Path, res):
@@ -202,7 +202,7 @@ def run_grate_test(grate_dir: Path, res):
             c_file = BENCH_DIR / f"{part}.c"
             bins.append(compile_lind(c_file))
 
-    run_lind(bins, res, "grate")
+    return run_lind(bins, res, "grate")
 
 
 def to_int(value):

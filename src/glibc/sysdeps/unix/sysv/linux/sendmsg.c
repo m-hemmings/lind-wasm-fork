@@ -24,11 +24,13 @@
 #include <syscall-template.h>
 #include <lind_syscall_num.h>
 #include <addr_translation.h>
+#include <stdio.h>
 
 ssize_t
 __libc_sendmsg (int fd, const struct msghdr *msg, int flags)
 {
   int iovcnt = (int) msg->msg_iovlen;
+  fprintf(stderr, "LIND sendmsg: fd=%d iovlen=%d\n", fd, iovcnt);
 
   /* Build host iov array with translated iov_base pointers.  */
   struct iovec host_iov[iovcnt];

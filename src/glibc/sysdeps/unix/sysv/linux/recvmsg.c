@@ -24,58 +24,41 @@
 #include <lind_syscall_num.h>
 #include <addr_translation.h>
 
-/* User code is compiled against the installed sysroot which has the
-   standard (unpadded) msghdr — 28 bytes on wasm32.  glibc internally
-   uses the padded msghdr (56 bytes) for the split-pointer trick.
-   Define the guest layout here so we can read the caller's struct
-   correctly regardless of the header mismatch.  */
-struct __guest_msghdr
-{
-  void *msg_name;
-  socklen_t msg_namelen;
-  struct iovec *msg_iov;   /* iovecs ARE padded (struct_iovec.h installed ok) */
-  size_t msg_iovlen;
-  void *msg_control;
-  size_t msg_controllen;
-  int msg_flags;
-};
-
 /* Lind: translate guest msghdr/iovec pointers to host pointers on the
    stack, following the writev split-pointer pattern.  rawposix just
    casts to libc::msghdr and calls recvmsg directly.  */
 static int
 __recvmsg_syscall (int fd, struct msghdr *msg, int flags)
 {
-  struct __guest_msghdr *gmsg = (struct __guest_msghdr *) msg;
-  int iovcnt = (int) gmsg->msg_iovlen;
+  int iovcnt = (int) msg->msg_iovlen;
 
   /* Build host iov array with translated iov_base pointers.  */
   struct iovec host_iov[iovcnt];
-  __lind_translate_iov (gmsg->msg_iov, host_iov, iovcnt);
+  __lind_translate_iov (msg->msg_iov, host_iov, iovcnt);
 
   /* Build host msghdr with translated pointers using split-pointer trick.  */
   struct msghdr host_msg;
   uint64_t addr;
 
   /* msg_name */
-  addr = TRANSLATE_GUEST_POINTER_TO_HOST (gmsg->msg_name);
+  addr = TRANSLATE_GUEST_POINTER_TO_HOST (msg->msg_name);
   host_msg.msg_name      = (void *)(uintptr_t)(uint32_t)(addr & 0xFFFFFFFFULL);
   host_msg.__pad_name    = (int)(uint32_t)(addr >> 32);
-  host_msg.msg_namelen   = gmsg->msg_namelen;
+  host_msg.msg_namelen   = msg->msg_namelen;
   host_msg.__pad_namelen = 0;
 
   /* msg_iov — point to translated host_iov array */
   addr = TRANSLATE_GUEST_POINTER_TO_HOST (host_iov);
   host_msg.msg_iov      = (struct iovec *)(uintptr_t)(uint32_t)(addr & 0xFFFFFFFFULL);
   host_msg.__pad_iov    = (int)(uint32_t)(addr >> 32);
-  host_msg.msg_iovlen   = gmsg->msg_iovlen;
+  host_msg.msg_iovlen   = msg->msg_iovlen;
   host_msg.__pad_iovlen = 0;
 
   /* msg_control */
-  addr = TRANSLATE_GUEST_POINTER_TO_HOST (gmsg->msg_control);
+  addr = TRANSLATE_GUEST_POINTER_TO_HOST (msg->msg_control);
   host_msg.msg_control      = (void *)(uintptr_t)(uint32_t)(addr & 0xFFFFFFFFULL);
   host_msg.__pad_control    = (int)(uint32_t)(addr >> 32);
-  host_msg.msg_controllen   = gmsg->msg_controllen;
+  host_msg.msg_controllen   = msg->msg_controllen;
   host_msg.__pad_controllen = 0;
 
   host_msg.msg_flags    = 0;
@@ -90,9 +73,9 @@ __recvmsg_syscall (int fd, struct msghdr *msg, int flags)
   if (ret >= 0)
     {
       /* Copy back output fields that the kernel updated.  */
-      gmsg->msg_namelen   = host_msg.msg_namelen;
-      gmsg->msg_controllen = host_msg.msg_controllen;
-      gmsg->msg_flags     = host_msg.msg_flags;
+      msg->msg_namelen   = host_msg.msg_namelen;
+      msg->msg_controllen = host_msg.msg_controllen;
+      msg->msg_flags     = host_msg.msg_flags;
     }
 
   return ret;
@@ -103,8 +86,7 @@ __libc_recvmsg64 (int fd, struct msghdr *msg, int flags)
 {
   ssize_t r;
 #if __TIMESIZE != 64
-  struct __guest_msghdr *gmsg = (struct __guest_msghdr *) msg;
-  socklen_t orig_controllen = msg != NULL ? gmsg->msg_controllen : 0;
+  socklen_t orig_controllen = msg != NULL ? msg->msg_controllen : 0;
 #endif
 
   r = __recvmsg_syscall (fd, msg, flags);
